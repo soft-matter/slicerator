@@ -186,6 +186,7 @@ def test_getattr():
     assert_equal(list(s1), list('ACEGI'))
     s2 = a[::2][1:].s
     assert_equal(list(s2), list('CEGI'))
+    assert_equal(a[::2][1:].s[0], 'C')
 
 
 def test_pipeline_with_args():
