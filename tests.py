@@ -6,7 +6,7 @@ import random
 import types
 import nose
 from nose.tools import assert_true, assert_equal, assert_raises
-from sliceable_iterable import SliceableIterable, pipeline
+from slicerator import Slicerator, pipeline
 
 path, _ = os.path.split(os.path.abspath(__file__))
 path = os.path.join(path, 'data')
@@ -57,7 +57,7 @@ def compare_slice_to_list(actual, expected):
 
 
 def letter_seq(letters):
-    return SliceableIterable(letters, list(range(len(letters))))
+    return Slicerator(letters, list(range(len(letters))))
 
 
 v = letter_seq(list('abcdefghij'))
@@ -137,7 +137,7 @@ def test_slice_with_generator():
 
 def test_no_len_raises():
     with assert_raises(ValueError):
-        SliceableIterable((i for i in range(5)), (i for i in range(5)))
+        Slicerator((i for i in range(5)), (i for i in range(5)))
 
 
 def _capitalize(letter):
@@ -172,9 +172,9 @@ def test_repr():
 def test_getattr():
     class MyList(list):
         my_attr = 'hello'
-        s = SliceableIterable(list('ABCDEFGHIJ'), range(10))
+        s = Slicerator(list('ABCDEFGHIJ'), range(10))
 
-    a = SliceableIterable(MyList('abcdefghij'), range(10))
+    a = Slicerator(MyList('abcdefghij'), range(10))
     assert_letters_equal(a, list('abcdefghij'))
     assert_true(hasattr(a, 'my_attr'))
     assert_true(hasattr(a, 's'))
