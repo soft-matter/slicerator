@@ -7,6 +7,17 @@ Think of it like a generator that is "reusable" and has a length.
 
 [![build status](https://travis-ci.org/soft-matter/slicerator.png?branch=master)](https://travis-ci.org/soft-matter/slicerator)
 
+Installation
+------------
+
+On any platform, use pip or conda.
+
+`pip install slicerator`
+
+or
+
+`conda install -c soft-matter slicerator`
+
 Example
 -------
 
