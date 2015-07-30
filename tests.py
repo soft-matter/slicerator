@@ -2,6 +2,7 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import os
+import numpy as np
 import random
 import types
 import nose
@@ -61,6 +62,12 @@ def letter_seq(letters):
 
 
 v = letter_seq(list('abcdefghij'))
+
+
+def test_bool_mask():
+    mask = np.array([True, False] * 5)
+    s = v[mask]
+    assert_letters_equal(s, list('acegi'))
 
 
 def test_slice_of_slice():

@@ -2,10 +2,8 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 from six.moves import range
-import numpy as np
 import collections
 import itertools
-import functools
 from functools import wraps
 
 
@@ -107,13 +105,17 @@ class Slicerator(object):
             return Slicerator(self._ancestor, indices, new_length)
         elif isinstance(key, collections.Iterable):
             # if the input is an iterable, doing 'fancy' indexing
-            if isinstance(key, np.ndarray) and key.dtype == np.bool:
-                # if we have a bool array, set up masking but defer
-                # the actual computation, returning another Slicerator
-                rel_indices = np.arange(len(self))[key]
-                indices = _index_generator(rel_indices, abs_indices)
-                new_length = key.sum()
-                return Slicerator(self._ancestor, indices, new_length)
+            if hasattr(key, '__array__') and hasattr(key, 'dtype'):
+                if key.dtype == bool:
+                    # if we have a bool array, set up masking but defer
+                    # the actual computation, returning another Slicerator
+                    nums = range(len(self))
+                    # This next line fakes up numpy's bool masking without
+                    # importing numpy.
+                    rel_indices = [x for x, y in zip(nums, key) if y]
+                    indices = _index_generator(rel_indices, abs_indices)
+                    new_length = sum(key)
+                    return Slicerator(self._ancestor, indices, new_length)
             if any(_k < -_len or _k >= _len for _k in key):
                 raise IndexError("Keys out of range")
             try:
