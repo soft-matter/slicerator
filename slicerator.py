@@ -9,7 +9,7 @@ from functools import wraps
 
 class Slicerator(object):
 
-    def __init__(self, ancestor, indices, length=None):
+    def __init__(self, ancestor, indices=None, length=None):
         """A generator that supports fancy indexing
 
         When sliced using any iterable with a known length, it return another
@@ -48,6 +48,12 @@ class Slicerator(object):
         >>> type(v3)
         generator
         """
+        if indices is None:
+            try:
+                indices = range(len(ancestor))
+            except TypeError:
+                raise ValueError("The indices parameter is required in this "
+                                 "case because len(ancestor) is not valid.")
         if length is None:
             try:
                 length = len(indices)
@@ -116,19 +122,20 @@ class Slicerator(object):
                     indices = _index_generator(rel_indices, abs_indices)
                     new_length = sum(key)
                     return Slicerator(self._ancestor, indices, new_length)
-            if any(_k < -_len or _k >= _len for _k in key):
-                raise IndexError("Keys out of range")
             try:
                 new_length = len(key)
             except TypeError:
                 # The key is a generator; return a plain old generator.
                 # Without knowing the length of the *key*,
                 # we can't give a Slicerator
+                # Also it cannot be checked if values are in range.
                 gen = (self[_k if _k >= 0 else _len + _k] for _k in key)
                 return gen
             else:
                 # The key is a list of in-range values. Build another
                 # Slicerator, again deferring computation.
+                if any(_k < -_len or _k >= _len for _k in key):
+                    raise IndexError("Keys out of range")
                 rel_indices = ((_k if _k >= 0 else _len + _k) for _k in key)
                 indices = _index_generator(rel_indices, abs_indices)
                 return Slicerator(self._ancestor, indices, new_length)
@@ -142,6 +149,14 @@ class Slicerator(object):
                 for _, i in zip(range(key + 1), self.indices):
                     abs_key = i
             return self._get(abs_key)
+
+    def __getstate__(self):
+        # When serializing, return a list of the sliced and processed data
+        return [self._get(key) for key in self.indices]
+
+    def __setstate__(self, data_as_list):
+        # When deserializing, restore the Slicerator
+        return self.__init__(data_as_list)
 
     def close(self):
         "Closing this child slice of the original reader does nothing."

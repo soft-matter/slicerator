@@ -6,6 +6,8 @@ import numpy as np
 import random
 import types
 import nose
+from six import BytesIO
+import pickle
 from nose.tools import assert_true, assert_equal, assert_raises
 from slicerator import Slicerator, pipeline
 
@@ -14,15 +16,14 @@ path = os.path.join(path, 'data')
 
 
 def assert_letters_equal(actual, expected):
+    # check if both lengths are equal
+    assert_equal(len(actual), len(expected))
     for actual_, expected_ in zip(actual, expected):
         assert_equal(actual_, expected_)
 
 
 def compare_slice_to_list(actual, expected):
     assert_letters_equal(actual, expected)
-    # test lengths
-    actual_len = len(actual)
-    assert_equal(actual_len, len(expected))
     indices = list(range(len(actual)))
     for i in indices:
         # test positive indexing
@@ -57,11 +58,7 @@ def compare_slice_to_list(actual, expected):
     assert_letters_equal(actual[:-1], expected[:-1])
 
 
-def letter_seq(letters):
-    return Slicerator(letters, list(range(len(letters))))
-
-
-v = letter_seq(list('abcdefghij'))
+v = Slicerator(list('abcdefghij'))
 
 
 def test_bool_mask():
@@ -137,8 +134,8 @@ def test_slice_of_slice_of_slice_of_slice():
 def test_slice_with_generator():
     slice1 = v[1:]
     compare_slice_to_list(slice1, list('bcdefghij'))
-    slice2 = slice1[(i for i in range(2,5))]
-    assert_letters_equal(slice2, list('def'))
+    slice2 = slice1[(i for i in range(2, 5))]
+    assert_letters_equal(list(slice2), list('def'))
     assert_true(isinstance(slice2, types.GeneratorType))
 
 
@@ -215,6 +212,46 @@ def test_composed_pipelines():
     composed = capitalize(a_to_z(v), 'c')
 
     assert_letters_equal(composed, 'zbCdefghij')
+
+def test_serialize():
+    # dump Slicerator
+    stream = BytesIO()
+    pickle.dump(v, stream)
+    stream.seek(0)
+    v2 = pickle.load(stream)
+    stream.close()
+    compare_slice_to_list(v2, list('abcdefghij'))
+    compare_slice_to_list(v2[4:], list('efghij'))
+    compare_slice_to_list(v2[4:][:-1], list('efghi'))
+
+    # dump sliced Slicerator
+    stream = BytesIO()
+    pickle.dump(v[4:], stream)
+    stream.seek(0)
+    v2 = pickle.load(stream)
+    stream.close()
+    compare_slice_to_list(v2, list('efghij'))
+    compare_slice_to_list(v2[2:], list('ghij'))
+    compare_slice_to_list(v2[2:][:-1], list('ghi'))
+
+    # dump sliced sliced Slicerator
+    stream = BytesIO()
+    pickle.dump(v[4:][:-1], stream)
+    stream.seek(0)
+    v2 = pickle.load(stream)
+    stream.close()
+    compare_slice_to_list(v2, list('efghi'))
+    compare_slice_to_list(v2[2:], list('ghi'))
+    compare_slice_to_list(v2[2:][:-1], list('gh'))
+
+    # test pipeline
+    capitalize = pipeline(_capitalize_if_equal)
+    stream = BytesIO()
+    pickle.dump(capitalize(v, 'a'), stream)
+    stream.seek(0)
+    v2 = pickle.load(stream)
+    stream.close()
+    compare_slice_to_list(v2, list('Abcdefghij'))
 
 
 if __name__ == '__main__':
