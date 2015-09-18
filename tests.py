@@ -14,15 +14,14 @@ path = os.path.join(path, 'data')
 
 
 def assert_letters_equal(actual, expected):
+    # check if both lengths are equal
+    assert_equal(len(actual), len(expected))
     for actual_, expected_ in zip(actual, expected):
         assert_equal(actual_, expected_)
 
 
 def compare_slice_to_list(actual, expected):
     assert_letters_equal(actual, expected)
-    # test lengths
-    actual_len = len(actual)
-    assert_equal(actual_len, len(expected))
     indices = list(range(len(actual)))
     for i in indices:
         # test positive indexing
@@ -57,11 +56,7 @@ def compare_slice_to_list(actual, expected):
     assert_letters_equal(actual[:-1], expected[:-1])
 
 
-def letter_seq(letters):
-    return Slicerator(letters, list(range(len(letters))))
-
-
-v = letter_seq(list('abcdefghij'))
+v = Slicerator(list('abcdefghij'))
 
 
 def test_bool_mask():
@@ -137,8 +132,8 @@ def test_slice_of_slice_of_slice_of_slice():
 def test_slice_with_generator():
     slice1 = v[1:]
     compare_slice_to_list(slice1, list('bcdefghij'))
-    slice2 = slice1[(i for i in range(2,5))]
-    assert_letters_equal(slice2, list('def'))
+    slice2 = slice1[(i for i in range(2, 5))]
+    assert_letters_equal(list(slice2), list('def'))
     assert_true(isinstance(slice2, types.GeneratorType))
 
 

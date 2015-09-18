@@ -122,19 +122,20 @@ class Slicerator(object):
                     indices = _index_generator(rel_indices, abs_indices)
                     new_length = sum(key)
                     return Slicerator(self._ancestor, indices, new_length)
-            if any(_k < -_len or _k >= _len for _k in key):
-                raise IndexError("Keys out of range")
             try:
                 new_length = len(key)
             except TypeError:
                 # The key is a generator; return a plain old generator.
                 # Without knowing the length of the *key*,
                 # we can't give a Slicerator
+                # Also it cannot be checked if values are in range.
                 gen = (self[_k if _k >= 0 else _len + _k] for _k in key)
                 return gen
             else:
                 # The key is a list of in-range values. Build another
                 # Slicerator, again deferring computation.
+                if any(_k < -_len or _k >= _len for _k in key):
+                    raise IndexError("Keys out of range")
                 rel_indices = ((_k if _k >= 0 else _len + _k) for _k in key)
                 indices = _index_generator(rel_indices, abs_indices)
                 return Slicerator(self._ancestor, indices, new_length)
