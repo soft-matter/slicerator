@@ -6,6 +6,8 @@ import numpy as np
 import random
 import types
 import nose
+from six import BytesIO
+import pickle
 from nose.tools import assert_true, assert_equal, assert_raises
 from slicerator import Slicerator, pipeline
 
@@ -210,6 +212,46 @@ def test_composed_pipelines():
     composed = capitalize(a_to_z(v), 'c')
 
     assert_letters_equal(composed, 'zbCdefghij')
+
+def test_serialize():
+    # dump Slicerator
+    stream = BytesIO()
+    pickle.dump(v, stream)
+    stream.seek(0)
+    v2 = pickle.load(stream)
+    stream.close()
+    compare_slice_to_list(v2, list('abcdefghij'))
+    compare_slice_to_list(v2[4:], list('efghij'))
+    compare_slice_to_list(v2[4:][:-1], list('efghi'))
+
+    # dump sliced Slicerator
+    stream = BytesIO()
+    pickle.dump(v[4:], stream)
+    stream.seek(0)
+    v2 = pickle.load(stream)
+    stream.close()
+    compare_slice_to_list(v2, list('efghij'))
+    compare_slice_to_list(v2[2:], list('ghij'))
+    compare_slice_to_list(v2[2:][:-1], list('ghi'))
+
+    # dump sliced sliced Slicerator
+    stream = BytesIO()
+    pickle.dump(v[4:][:-1], stream)
+    stream.seek(0)
+    v2 = pickle.load(stream)
+    stream.close()
+    compare_slice_to_list(v2, list('efghi'))
+    compare_slice_to_list(v2[2:], list('ghi'))
+    compare_slice_to_list(v2[2:][:-1], list('gh'))
+
+    # test pipeline
+    capitalize = pipeline(_capitalize_if_equal)
+    stream = BytesIO()
+    pickle.dump(capitalize(v, 'a'), stream)
+    stream.seek(0)
+    v2 = pickle.load(stream)
+    stream.close()
+    compare_slice_to_list(v2, list('Abcdefghij'))
 
 
 if __name__ == '__main__':

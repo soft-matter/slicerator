@@ -152,7 +152,7 @@ class Slicerator(object):
 
     def __getstate__(self):
         # When serializing, return a list of the sliced and processed data
-        return [self._get(key) for key in self._indices]
+        return [self._get(key) for key in self.indices]
 
     def __setstate__(self, data_as_list):
         # When deserializing, restore the Slicerator
