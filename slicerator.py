@@ -9,7 +9,7 @@ from functools import wraps
 
 class Slicerator(object):
 
-    def __init__(self, ancestor, indices, length=None):
+    def __init__(self, ancestor, indices=None, length=None):
         """A generator that supports fancy indexing
 
         When sliced using any iterable with a known length, it return another
@@ -48,6 +48,12 @@ class Slicerator(object):
         >>> type(v3)
         generator
         """
+        if indices is None:
+            try:
+                indices = range(len(ancestor))
+            except TypeError:
+                raise ValueError("The indices parameter is required in this "
+                                 "case because len(ancestor) is not valid.")
         if length is None:
             try:
                 length = len(indices)
