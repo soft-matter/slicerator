@@ -149,6 +149,14 @@ class Slicerator(object):
                     abs_key = i
             return self._get(abs_key)
 
+    def __getstate__(self):
+        # When serializing, return a list of the sliced and processed data
+        return [self._get(key) for key in self._indices]
+
+    def __setstate__(self, data_as_list):
+        # When deserializing, restore the Slicerator
+        return self.__init__(data_as_list)
+
     def close(self):
         "Closing this child slice of the original reader does nothing."
         pass
