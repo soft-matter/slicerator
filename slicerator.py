@@ -13,12 +13,14 @@ class Slicerator(object):
                  expose_attrs=None):
         """A generator that supports fancy indexing
 
-        When sliced using any iterable with a known length, it return another
+        When sliced using any iterable with a known length, it returns another
         object like itself, a Slicerator. When sliced with an integer,
         it returns the data payload.
 
-        Also, this retains the attributes of the ultimate ancestor that
-        created it (or its parent, or its parent's parent, ...).
+        Also, the attributes of the parent object can be propagated, exposed
+        through the child Slicerators. By default, no attributes are
+        propagated. But specific attributes to propagate can be white-listed
+        using the optional parameter `expose_attrs.
 
         Parameters
         ----------
