@@ -8,7 +8,7 @@ import types
 import nose
 from six import BytesIO
 import pickle
-from nose.tools import assert_true, assert_equal, assert_raises
+from nose.tools import assert_true, assert_false, assert_equal, assert_raises
 from slicerator import Slicerator, pipeline
 
 path, _ = os.path.split(os.path.abspath(__file__))
@@ -58,7 +58,7 @@ def compare_slice_to_list(actual, expected):
     assert_letters_equal(actual[:-1], expected[:-1])
 
 
-v = Slicerator(list('abcdefghij'))
+v = Slicerator.from_list(list('abcdefghij'))
 
 
 def test_bool_mask():
@@ -175,14 +175,17 @@ def test_repr():
 
 def test_getattr():
     class MyList(list):
-        my_attr = 'hello'
-        s = Slicerator(list('ABCDEFGHIJ'), range(10))
+        attr1 = 'hello'
+        attr2 = 'hello again'
+        s = Slicerator.from_list(list('ABCDEFGHIJ'))
+                       
 
-    a = Slicerator(MyList('abcdefghij'), range(10))
+    a = Slicerator.from_list(MyList('abcdefghij'), expose_attrs=['attr1', 's'])
     assert_letters_equal(a, list('abcdefghij'))
-    assert_true(hasattr(a, 'my_attr'))
+    assert_true(hasattr(a, 'attr1'))
+    assert_false(hasattr(a, 'attr2'))
     assert_true(hasattr(a, 's'))
-    assert_equal(a.my_attr, 'hello')
+    assert_equal(a.attr1, 'hello')
     with assert_raises(AttributeError):
         a[:5].nonexistent_attr
 
