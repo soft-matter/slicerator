@@ -145,7 +145,7 @@ class Slicerator(object):
         attr = getattr(self._ancestor, key)
         if isinstance(attr, Slicerator):
             return Slicerator(attr, '__getitem__', self.indices, len(self),
-                              self._attrs)
+                              attr._attrs)
         else:
             return attr
 
