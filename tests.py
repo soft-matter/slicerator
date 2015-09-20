@@ -278,19 +278,18 @@ def test_class():
             return self._filename
 
     dummy = Dummy()
-    assert_equal(dummy[1:][0], 'b')
+    compare_slice_to_list(dummy, 'abcdefghij')
+    compare_slice_to_list(dummy[1:], 'bcdefghij')
     assert_equal(dummy[1:].time(0), 1)
     assert_equal(dummy[1:].filename, 'filename')
 
-    assert_equal(dummy[1:][2:][0], 'd')
+    compare_slice_to_list(dummy[1:][2:], 'defghij')
     assert_equal(dummy[1:][2:].time(0), 3)
     assert_equal(dummy[1:][2:].filename, 'filename')
 
     capitalize = pipeline(_capitalize_if_equal)
     cap_b = capitalize(dummy, 'b')
-    assert_equal(cap_b[1], 'B')
-
-
+    assert_letters_equal(cap_b, 'aBcdefghij')
 
 
 if __name__ == '__main__':

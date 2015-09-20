@@ -341,7 +341,7 @@ class slicerate(object):
     def __call__(self, getitem):
         def slicerated(obj, key):
             if isinstance(key, int):
-                return getitem(obj, key)
+                return getitem(obj, key if key >= 0 else len(obj) + key)
             else:
                 return Slicerator(obj, '__getitem__',
                                   slice_attrs=self.slice_attrs,
