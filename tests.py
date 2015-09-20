@@ -9,7 +9,7 @@ import nose
 from six import BytesIO
 import pickle
 from nose.tools import assert_true, assert_false, assert_equal, assert_raises
-from slicerator import Slicerator, pipeline
+from slicerator import Slicerator, pipeline, slicerate
 
 path, _ = os.path.split(os.path.abspath(__file__))
 path = os.path.join(path, 'data')
@@ -177,23 +177,23 @@ def test_getattr():
     class MyList(list):
         attr1 = 'hello'
         attr2 = 'hello again'
-        s = Slicerator.from_list(list('ABCDEFGHIJ'))
+     #   s = Slicerator.from_list(list('ABCDEFGHIJ'))
                        
 
-    a = Slicerator.from_list(MyList('abcdefghij'), expose_attrs=['attr1', 's'])
+    a = Slicerator.from_list(MyList('abcdefghij'), expose_attrs=['attr1'])
     assert_letters_equal(a, list('abcdefghij'))
     assert_true(hasattr(a, 'attr1'))
     assert_false(hasattr(a, 'attr2'))
-    assert_true(hasattr(a, 's'))
+   # assert_true(hasattr(a, 's'))
     assert_equal(a.attr1, 'hello')
     with assert_raises(AttributeError):
         a[:5].nonexistent_attr
 
-    s1 = a[::2].s
-    assert_equal(list(s1), list('ACEGI'))
-    s2 = a[::2][1:].s
-    assert_equal(list(s2), list('CEGI'))
-    assert_equal(a[::2][1:].s[0], 'C')
+ #   s1 = a[::2].s
+ #   assert_equal(list(s1), list('ACEGI'))
+ #   s2 = a[::2][1:].s
+ #   assert_equal(list(s2), list('CEGI'))
+ #   assert_equal(a[::2][1:].s[0], 'C')
 
 
 def test_pipeline_with_args():
@@ -255,6 +255,42 @@ def test_serialize():
     v2 = pickle.load(stream)
     stream.close()
     compare_slice_to_list(v2, list('Abcdefghij'))
+
+def test_class():
+    class Dummy(object):
+        def __init__(self):
+            self.frame = list('abcdefghij')
+            self._time = list(range(len(self.frame)))
+            self._filename = 'filename'
+
+        def __len__(self):
+            return len(self.frame)
+
+        @slicerate(slice_attrs=['time'], expose_attrs=['filename'])
+        def __getitem__(self, i):
+            return self.frame[i]  # actual code of get_frame
+
+        def time(self, i):
+            return self._time[i]
+
+        @property
+        def filename(self):
+            return self._filename
+
+    dummy = Dummy()
+    assert_equal(dummy[1:][0], 'b')
+    assert_equal(dummy[1:].time(0), 1)
+    assert_equal(dummy[1:].filename, 'filename')
+
+    assert_equal(dummy[1:][2:][0], 'd')
+    assert_equal(dummy[1:][2:].time(0), 3)
+    assert_equal(dummy[1:][2:].filename, 'filename')
+
+    capitalize = pipeline(_capitalize_if_equal)
+    cap_b = capitalize(dummy, 'b')
+    assert_equal(cap_b[1], 'B')
+
+
 
 
 if __name__ == '__main__':

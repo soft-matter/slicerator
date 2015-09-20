@@ -10,7 +10,7 @@ from functools import wraps
 class Slicerator(object):
 
     def __init__(self, ancestor, method, indices=None, length=None,
-                 expose_attrs=None):
+                 slice_attrs=None, expose_attrs=None):
         """A generator that supports fancy indexing
 
         When sliced using any iterable with a known length, it returns another
@@ -66,13 +66,24 @@ class Slicerator(object):
             except TypeError:
                 raise ValueError("The length parameter is required in this "
                                  "case because len(indices) is not valid.")
+        if slice_attrs is None:
+            slice_attrs = []
         if expose_attrs is None:
             expose_attrs = []
         self._len = length
         self._ancestor = ancestor
         self._method = method
         self._indices = indices
-        self._attrs = expose_attrs
+        self._expose_attrs = expose_attrs
+        self._slice_attrs = slice_attrs
+        # TODO: check if method is not defined by Slicerator already
+        for attr in expose_attrs:
+            setattr(self, attr, getattr(ancestor, attr))
+        for attr in slice_attrs:
+            def attr_wrapped(key, *args, **kwargs):
+                new_key = self._map_index(key)
+                return getattr(ancestor, attr)(new_key, *args, **kwargs)
+            setattr(self, attr, attr_wrapped)
         self._counter = 0
         self._proc_func = lambda image: image
 
@@ -127,6 +138,17 @@ class Slicerator(object):
         "Wrap ancestor's method in a processing function."
         return self._proc_func(getattr(self._ancestor, self._method)(key))
 
+    def _map_index(self, key):
+        if key < -self._len or key >= self._len:
+            raise IndexError("Key out of range")
+        try:
+            abs_key = self._indices[key]
+        except TypeError:
+            key = key if key >= 0 else self._len + key
+            for _, i in zip(range(key + 1), self.indices):
+                abs_key = i
+        return abs_key
+
     def __repr__(self):
         msg = "Sliced and/or processed {0}. Original repr:\n".format(
                 type(self._ancestor).__name__)
@@ -138,18 +160,6 @@ class Slicerator(object):
 
     def __len__(self):
         return self._len
-
-    def __getattr__(self, key):
-        # Remember this only gets called if __getattribute__ raises an
-        # AttributeError. Try the ancestor object.
-        if key not in self._attrs:
-            raise AttributeError
-        attr = getattr(self._ancestor, key)
-        if isinstance(attr, Slicerator):
-            return Slicerator(attr, '__getitem__', self.indices, len(self),
-                              attr._attrs)
-        else:
-            return attr
 
     def __getitem__(self, key):
         """for data access"""
@@ -163,7 +173,7 @@ class Slicerator(object):
             new_length = len(rel_indices)
             indices = _index_generator(rel_indices, abs_indices)
             return Slicerator(self._ancestor, '__getitem__', indices, new_length,
-                              self._attrs)
+                              self._slice_attrs, self._expose_attrs)
         elif isinstance(key, collections.Iterable):
             # if the input is an iterable, doing 'fancy' indexing
             if hasattr(key, '__array__') and hasattr(key, 'dtype'):
@@ -177,7 +187,8 @@ class Slicerator(object):
                     indices = _index_generator(rel_indices, abs_indices)
                     new_length = sum(key)
                     return Slicerator(self._ancestor, '__getitem__', indices,
-                                      new_length, self._attrs)
+                                      new_length, self._slice_attrs,
+                                      self._expose_attrs)
             try:
                 new_length = len(key)
             except TypeError:
@@ -195,17 +206,10 @@ class Slicerator(object):
                 rel_indices = ((_k if _k >= 0 else _len + _k) for _k in key)
                 indices = _index_generator(rel_indices, abs_indices)
                 return Slicerator(self._ancestor, '__getitem__', indices,
-                                  new_length, self._attrs)
+                                  new_length, self._slice_attrs,
+                                  self._expose_attrs)
         else:
-            if key < -_len or key >= _len:
-                raise IndexError("Key out of range")
-            try:
-                abs_key = self._indices[key]
-            except TypeError:
-                key = key if key >= 0 else _len + key
-                for _, i in zip(range(key + 1), self.indices):
-                    abs_key = i
-            return self._get(abs_key)
+            return self._get(self._map_index(key))
 
     def __getstate__(self):
         # When serializing, return a list of the sliced and processed data
@@ -302,7 +306,8 @@ def pipeline(func):
     """
     @wraps(func)
     def process(obj, *args, **kwargs):
-        if isinstance(obj, Slicerator):
+        if ((obj.__getitem__.__name__ == 'slicerated') or
+                isinstance(obj, Slicerator)):
             s = Slicerator.from_list(obj)
             def f(x):
                 return func(x, *args, **kwargs)
@@ -321,3 +326,24 @@ def pipeline(func):
                        "any other objects, its behavior is "
                        "unchanged.\n\n") + process.__doc__
     return process
+
+
+class slicerate(object):
+    def __init__(self, slice_attrs=None, expose_attrs=None):
+        if callable(slice_attrs):
+            # When decorator is used without (), the first parameter will be
+            # the decorated function itself.
+            raise ValueError('The decorator @slicerate requires arguments. Put '
+                             '() if you do not want to propagate attributes.')
+        self.slice_attrs = slice_attrs
+        self.expose_attrs = expose_attrs
+
+    def __call__(self, getitem):
+        def slicerated(obj, key):
+            if isinstance(key, int):
+                return getitem(obj, key)
+            else:
+                return Slicerator(obj, '__getitem__',
+                                  slice_attrs=self.slice_attrs,
+                                  expose_attrs=self.expose_attrs)[key]
+        return slicerated
