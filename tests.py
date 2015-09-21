@@ -9,7 +9,7 @@ import nose
 from six import BytesIO
 import pickle
 from nose.tools import assert_true, assert_false, assert_equal, assert_raises
-from slicerator import Slicerator, pipeline, slicerate
+from slicerator import *
 
 path, _ = os.path.split(os.path.abspath(__file__))
 path = os.path.join(path, 'data')
@@ -180,7 +180,7 @@ def test_getattr():
      #   s = Slicerator.from_list(list('ABCDEFGHIJ'))
                        
 
-    a = Slicerator.from_list(MyList('abcdefghij'), expose_attrs=['attr1'])
+    a = Slicerator.from_list(MyList('abcdefghij'), propagate=['attr1'])
     assert_letters_equal(a, list('abcdefghij'))
     assert_true(hasattr(a, 'attr1'))
     assert_false(hasattr(a, 'attr2'))
@@ -260,38 +260,47 @@ def test_class():
     class Dummy(object):
         def __init__(self):
             self.frame = list('abcdefghij')
-            self._time = list(range(len(self.frame)))
-            self._filename = 'filename'
 
         def __len__(self):
             return len(self.frame)
 
-        @slicerate(slice_attrs=['time'], expose_attrs=['filename'])
+        @slicerate(propagate_indexed=['time'], propagate=['filename'])
         def __getitem__(self, i):
             return self.frame[i]  # actual code of get_frame
 
         def time(self, i):
-            return self._time[i]
+            return i * 5
+
+        @propagate_indexed
+        def return_i(self, i):
+            return i
 
         @property
         def filename(self):
-            return self._filename
+            return 'filename'
+
+        @propagate
+        def other_attr(self):
+            return 'other_string'
 
     dummy = Dummy()
     compare_slice_to_list(dummy, 'abcdefghij')
     compare_slice_to_list(dummy[1:], 'bcdefghij')
-    assert_equal(dummy[1:].time(0), 1)
+    assert_equal(dummy[1:].return_i(0), 1)
+    assert_equal(dummy[1:].time(0), 5)
     assert_equal(dummy[1:].filename, 'filename')
+    assert_equal(dummy[1:].other_attr(), 'other_string')
 
     compare_slice_to_list(dummy[1:][2:], 'defghij')
-    assert_equal(dummy[1:][2:].time(0), 3)
+    assert_equal(dummy[1:][2:].return_i(0), 3)
+    assert_equal(dummy[1:][2:].time(0), 15)
     assert_equal(dummy[1:][2:].filename, 'filename')
+    assert_equal(dummy[1:][2:].other_attr(), 'other_string')
 
     capitalize = pipeline(_capitalize_if_equal)
     cap_b = capitalize(dummy, 'b')
     assert_letters_equal(cap_b, 'aBcdefghij')
 
-
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
-                    exit=False)
+                   exit=False)

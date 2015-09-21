@@ -10,7 +10,7 @@ from functools import wraps
 class Slicerator(object):
 
     def __init__(self, ancestor, method, indices=None, length=None,
-                 slice_attrs=None, expose_attrs=None):
+                 propagate=None, propagate_indexed=None):
         """A generator that supports fancy indexing
 
         When sliced using any iterable with a known length, it returns another
@@ -20,7 +20,8 @@ class Slicerator(object):
         Also, the attributes of the parent object can be propagated, exposed
         through the child Slicerators. By default, no attributes are
         propagated. But specific attributes to propagate can be white-listed
-        using the optional parameter `expose_attrs.
+        using the optional parameter `propagate`. Class methods taking an index
+        can be propagated using `propagate_indexed`. The index will be remapped.
 
         Parameters
         ----------
@@ -28,13 +29,19 @@ class Slicerator(object):
         method_name : string
             method of ancestor object that accept an integer as its argument
         indices : iterable
-            giving indices into `ancestor`
-        length : integer, optional
+            Giving indices into `ancestor`.
+            Required if len(ancestor) is invalid.
+        length : integer
             length of indicies
             This is required if `indices` is a generator,
             that is, if `len(indices)` is invalid
-        expose_attrs : list
-            list of attributes to be propaged into Slicerator
+        propagate : list of str, optional
+            list of attributes to be propagated into Slicerator
+            May also be defined using the @propagate decorator
+        propagate_indexed : list of str, optional
+            list of class methods to be propagated into Slicerator. Slicerator
+            will remap the first argument of the method to the index in the
+            slice. May also be defined using the @propagate_indexed decorator
 
         Examples
         --------
@@ -66,29 +73,21 @@ class Slicerator(object):
             except TypeError:
                 raise ValueError("The length parameter is required in this "
                                  "case because len(indices) is not valid.")
-        if slice_attrs is None:
-            slice_attrs = []
-        if expose_attrs is None:
-            expose_attrs = []
+        if propagate_indexed is None:
+            propagate_indexed = []
+        if propagate is None:
+            propagate = []
         self._len = length
         self._ancestor = ancestor
         self._method = method
         self._indices = indices
-        self._expose_attrs = expose_attrs
-        self._slice_attrs = slice_attrs
-        # TODO: check if method is not defined by Slicerator already
-        for attr in expose_attrs:
-            setattr(self, attr, getattr(ancestor, attr))
-        for attr in slice_attrs:
-            def attr_wrapped(key, *args, **kwargs):
-                new_key = self._map_index(key)
-                return getattr(ancestor, attr)(new_key, *args, **kwargs)
-            setattr(self, attr, attr_wrapped)
+        self._propagate = propagate
+        self._propagate_indexed = propagate_indexed
         self._counter = 0
         self._proc_func = lambda image: image
 
     @classmethod
-    def from_func(cls, func, length, expose_attrs):
+    def from_func(cls, func, length, propagate=None):
         """
         Make a Slicerator from a function that accepts an integer index
 
@@ -98,7 +97,7 @@ class Slicerator(object):
             callable that accepts an integer as its argument
         length : int
             number of elements; used to supposed revserse slicing like [-1]
-        expose_attrs : list
+        propagate : list, optional
             list of attributes to be propaged into Slicerator
         """
         class Dummy:
@@ -109,10 +108,10 @@ class Slicerator(object):
             def __len__(self):
                 return length
 
-        return cls(Dummy(), 'dummy_method', expose_attrs=expose_attrs)
+        return cls(Dummy(), 'dummy_method', propagate=propagate)
 
     @classmethod
-    def from_list(cls, obj, expose_attrs=None):
+    def from_list(cls, obj, propagate=None):
         """
         Construct a Slicerator from an indexable object (like a list).
 
@@ -123,10 +122,10 @@ class Slicerator(object):
         ----------
         obj : list-like
             must support __getitem__ and __len__
-        expose_attrs : list, optional
-            list of attributes to be propaged into Slicerator
+        propagate : list, optional
+            list of attributes to be propagated into Slicerator
         """
-        return cls(obj, '__getitem__', expose_attrs=expose_attrs)
+        return cls(obj, '__getitem__', propagate=propagate)
 
     @property
     def indices(self):
@@ -173,7 +172,7 @@ class Slicerator(object):
             new_length = len(rel_indices)
             indices = _index_generator(rel_indices, abs_indices)
             return Slicerator(self._ancestor, '__getitem__', indices, new_length,
-                              self._slice_attrs, self._expose_attrs)
+                              self._propagate, self._propagate_indexed)
         elif isinstance(key, collections.Iterable):
             # if the input is an iterable, doing 'fancy' indexing
             if hasattr(key, '__array__') and hasattr(key, 'dtype'):
@@ -187,8 +186,8 @@ class Slicerator(object):
                     indices = _index_generator(rel_indices, abs_indices)
                     new_length = sum(key)
                     return Slicerator(self._ancestor, '__getitem__', indices,
-                                      new_length, self._slice_attrs,
-                                      self._expose_attrs)
+                                      new_length, self._propagate,
+                                      self._propagate_indexed)
             try:
                 new_length = len(key)
             except TypeError:
@@ -206,10 +205,23 @@ class Slicerator(object):
                 rel_indices = ((_k if _k >= 0 else _len + _k) for _k in key)
                 indices = _index_generator(rel_indices, abs_indices)
                 return Slicerator(self._ancestor, '__getitem__', indices,
-                                  new_length, self._slice_attrs,
-                                  self._expose_attrs)
+                                  new_length, self._propagate,
+                                  self._propagate_indexed)
         else:
             return self._get(self._map_index(key))
+
+    def __getattr__(self, name):
+        if not hasattr(self._ancestor, name):
+            raise AttributeError
+        attr = getattr(self._ancestor, name)
+        if name in self._propagate or hasattr(attr, '_propagate'):
+            return attr
+        if name in self._propagate_indexed or hasattr(attr, '_propagate_indexed'):
+            def attr_reindexed(key, *args, **kwargs):
+                return attr(self._map_index(key), *args, **kwargs)
+            return attr_reindexed
+
+        raise AttributeError
 
     def __getstate__(self):
         # When serializing, return a list of the sliced and processed data
@@ -329,14 +341,14 @@ def pipeline(func):
 
 
 class slicerate(object):
-    def __init__(self, slice_attrs=None, expose_attrs=None):
-        if callable(slice_attrs):
+    def __init__(self, propagate=None, propagate_indexed=None):
+        if callable(propagate):
             # When decorator is used without (), the first parameter will be
             # the decorated function itself.
             raise ValueError('The decorator @slicerate requires arguments. Put '
                              '() if you do not want to propagate attributes.')
-        self.slice_attrs = slice_attrs
-        self.expose_attrs = expose_attrs
+        self.propagate = propagate
+        self.propagate_indexed = propagate_indexed
 
     def __call__(self, getitem):
         def slicerated(obj, key):
@@ -344,6 +356,20 @@ class slicerate(object):
                 return getitem(obj, key if key >= 0 else len(obj) + key)
             else:
                 return Slicerator(obj, '__getitem__',
-                                  slice_attrs=self.slice_attrs,
-                                  expose_attrs=self.expose_attrs)[key]
+                                  propagate=self.propagate,
+                                  propagate_indexed=self.propagate_indexed)[key]
         return slicerated
+
+
+def propagate(func):
+    if isinstance(func, property):
+        # TODO: make this work for properties
+        raise ValueError('@propagate is not functioning with properties')
+    else:
+        func._propagate = True
+    return func
+
+
+def propagate_indexed(func):
+    func._propagate_indexed = True
+    return func
