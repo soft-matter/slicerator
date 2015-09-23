@@ -84,7 +84,6 @@ class Slicerator(object):
         self._indices = indices
         self._propagate = propagate
         self._propagate_indexed = propagate_indexed
-        self._counter = 0
         self._proc_func = lambda image: image
 
     @classmethod
@@ -215,10 +214,6 @@ class Slicerator(object):
     def __setstate__(self, data_as_list):
         # When deserializing, restore the Slicerator
         return self.__init__(data_as_list, '__getitem__')
-
-    def close(self):
-        "Closing this child slice of the original reader does nothing."
-        pass
 
 
 def _index_generator(new_indices, old_indices):

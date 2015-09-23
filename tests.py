@@ -181,6 +181,8 @@ def test_getattr():
         def s(self, i):
             return list('ABCDEFGHIJ')[i]
 
+        def close(self):
+            pass
 
     a = Slicerator(MyList('abcdefghij'), propagate=['attr1'],
                    propagate_indexed=['s'])
@@ -188,6 +190,7 @@ def test_getattr():
     assert_true(hasattr(a, 'attr1'))
     assert_false(hasattr(a, 'attr2'))
     assert_true(hasattr(a, 's'))
+    assert_false(hasattr(a, 'close'))
     assert_equal(a.attr1, 'hello')
     with assert_raises(AttributeError):
         a[:5].nonexistent_attr
