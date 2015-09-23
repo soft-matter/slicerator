@@ -58,7 +58,7 @@ def compare_slice_to_list(actual, expected):
     assert_letters_equal(actual[:-1], expected[:-1])
 
 
-v = Slicerator.from_list(list('abcdefghij'))
+v = Slicerator(list('abcdefghij'))
 
 
 def test_bool_mask():
@@ -163,7 +163,7 @@ def _a_to_z(letter):
 
 
 def test_pipeline_simple():
-    capitalize = pipeline(_capitalize)
+    capitalize = pipeline()(_capitalize)
     cap_v = capitalize(v[:1])
 
     assert_letters_equal([cap_v[0]], [_capitalize(v[0])])
@@ -177,27 +177,30 @@ def test_getattr():
     class MyList(list):
         attr1 = 'hello'
         attr2 = 'hello again'
-     #   s = Slicerator.from_list(list('ABCDEFGHIJ'))
-                       
 
-    a = Slicerator.from_list(MyList('abcdefghij'), propagate=['attr1'])
+        def s(self, i):
+            return list('ABCDEFGHIJ')[i]
+
+
+    a = Slicerator(MyList('abcdefghij'), propagate=['attr1'],
+                   propagate_indexed=['s'])
     assert_letters_equal(a, list('abcdefghij'))
     assert_true(hasattr(a, 'attr1'))
     assert_false(hasattr(a, 'attr2'))
-   # assert_true(hasattr(a, 's'))
+    assert_true(hasattr(a, 's'))
     assert_equal(a.attr1, 'hello')
     with assert_raises(AttributeError):
         a[:5].nonexistent_attr
 
- #   s1 = a[::2].s
- #   assert_equal(list(s1), list('ACEGI'))
- #   s2 = a[::2][1:].s
- #   assert_equal(list(s2), list('CEGI'))
- #   assert_equal(a[::2][1:].s[0], 'C')
+    s1 = a[::2].s
+    assert_equal([s1(i) for i in range(5)], list('ACEGI'))
+    s2 = a[::2][1:].s
+    assert_equal([s2(i) for i in range(4)], list('CEGI'))
+    assert_equal(a[::2][1:].s(0), 'C')
 
 
 def test_pipeline_with_args():
-    capitalize = pipeline(_capitalize_if_equal)
+    capitalize = pipeline()(_capitalize_if_equal)
     cap_a = capitalize(v, 'a')
     cap_b = capitalize(v, 'b')
 
@@ -209,8 +212,8 @@ def test_pipeline_with_args():
 
 
 def test_composed_pipelines():
-    a_to_z = pipeline(_a_to_z)
-    capitalize = pipeline(_capitalize_if_equal)
+    a_to_z = pipeline()(_a_to_z)
+    capitalize = pipeline()(_capitalize_if_equal)
 
     composed = capitalize(a_to_z(v), 'c')
 
@@ -248,7 +251,7 @@ def test_serialize():
     compare_slice_to_list(v2[2:][:-1], list('gh'))
 
     # test pipeline
-    capitalize = pipeline(_capitalize_if_equal)
+    capitalize = pipeline()(_capitalize_if_equal)
     stream = BytesIO()
     pickle.dump(capitalize(v, 'a'), stream)
     stream.seek(0)
@@ -297,7 +300,7 @@ def test_class():
     assert_equal(dummy[1:][2:].filename, 'filename')
     assert_equal(dummy[1:][2:].other_attr(), 'other_string')
 
-    capitalize = pipeline(_capitalize_if_equal)
+    capitalize = pipeline()(_capitalize_if_equal)
     cap_b = capitalize(dummy, 'b')
     assert_letters_equal(cap_b, 'aBcdefghij')
 

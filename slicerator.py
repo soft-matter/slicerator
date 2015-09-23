@@ -9,8 +9,8 @@ from functools import wraps
 
 class Slicerator(object):
 
-    def __init__(self, ancestor, method, indices=None, length=None,
-                 propagate=None, propagate_indexed=None):
+    def __init__(self, ancestor, method='__getitem__', indices=None,
+                 length=None, propagate=None, propagate_indexed=None):
         """A generator that supports fancy indexing
 
         When sliced using any iterable with a known length, it returns another
@@ -26,8 +26,6 @@ class Slicerator(object):
         Parameters
         ----------
         ancestor : object
-        method_name : string
-            method of ancestor object that accept an integer as its argument
         indices : iterable
             Giving indices into `ancestor`.
             Required if len(ancestor) is invalid.
@@ -35,6 +33,9 @@ class Slicerator(object):
             length of indicies
             This is required if `indices` is a generator,
             that is, if `len(indices)` is invalid
+        method : string, optional
+            method of ancestor object that accept an integer as its argument.
+            Defaults to '__getitem__'.
         propagate : list of str, optional
             list of attributes to be propagated into Slicerator
             May also be defined using the @propagate decorator
@@ -102,30 +103,13 @@ class Slicerator(object):
         """
         class Dummy:
 
-            def dummy_method(self):
+            def __getitem__(self):
                 return func
 
             def __len__(self):
                 return length
 
-        return cls(Dummy(), 'dummy_method', propagate=propagate)
-
-    @classmethod
-    def from_list(cls, obj, propagate=None):
-        """
-        Construct a Slicerator from an indexable object (like a list).
-
-        This is a convenience function. `Slicereator.from_list(obj)` is
-        equivalent to `Slicerator(obj, '__getitem__')`.
-
-        Parameters
-        ----------
-        obj : list-like
-            must support __getitem__ and __len__
-        propagate : list, optional
-            list of attributes to be propagated into Slicerator
-        """
-        return cls(obj, '__getitem__', propagate=propagate)
+        return cls(Dummy(), propagate=propagate)
 
     @property
     def indices(self):
@@ -271,7 +255,7 @@ def _index_generator(new_indices, old_indices):
                 continue
 
 
-def pipeline(func):
+class pipeline(object):
     """Decorator to make function aware of Slicerator objects.
 
     When the function is applied to a Slicerator, it
@@ -282,8 +266,12 @@ def pipeline(func):
 
     Parameters
     ----------
-    func : callable
-        function that accepts an image as its first argument
+    propagate : list of str
+        List of attribute names that will be propagated through the pipeline.
+    propagate_indexed : list of str
+        List of attribute names that will be propagated and reindexed through
+        the pipeline. Attributes need to be methods accepting an index as its
+        second argument (so directly after `self`).
 
     Returns
     -------
@@ -292,7 +280,7 @@ def pipeline(func):
     Example
     -------
     Apply the pipeline decorator to your image processing function.
-    >>> @pipeline
+    >>> @pipeline()
     ...  def color_channel(image, channel):
     ...      return image[channel, :, :]
     ...
@@ -305,7 +293,7 @@ def pipeline(func):
     >>> green_images = color_channel(images, 1)
 
     Pipeline functions can also be composed.
-    >>> @pipeline
+    >>> @pipeline()
     ... def rescale(image):
     ... return (image - image.min())/image.ptp()
     ...
@@ -316,31 +304,59 @@ def pipeline(func):
     >>> single_img = images[0]
     >>> red_img = red_channel(single_img)  # normal behavior
     """
-    @wraps(func)
-    def process(obj, *args, **kwargs):
-        if ((obj.__getitem__.__name__ == 'slicerated') or
-                isinstance(obj, Slicerator)):
-            s = Slicerator.from_list(obj)
-            def f(x):
-                return func(x, *args, **kwargs)
-            s._proc_func = f
-            return s
-        else:
-            # Fall back on normal behavior of func, interpreting input
-            # as a single image.
-            return func(obj, *args, **kwargs)
+    def __init__(self, propagate=None, propagate_indexed=None):
+        if callable(propagate):
+            # When decorator is used without (), the first parameter will be
+            # the decorated function itself.
+            raise ValueError('The decorator @pipeline requires arguments. Put '
+                             '() if you do not want to propagate attributes.')
+        self.propagate = propagate
+        self.propagate_indexed = propagate_indexed
 
-    if process.__doc__ is None:
-        process.__doc__ = ''
-    process.__doc__ = ("This function has been made lazy. When passed\n"
-                       "a Slicerator, it will return a \n"
-                       "new Slicerator of the results. When passed \n"
-                       "any other objects, its behavior is "
-                       "unchanged.\n\n") + process.__doc__
-    return process
+    def __call__(self, func):
+        @wraps(func)
+        def process(obj, *args, **kwargs):
+            if ((obj.__getitem__.__name__ == 'slicerated') or
+                    isinstance(obj, Slicerator)):
+                s = Slicerator(obj, propagate=self.propagate,
+                               propagate_indexed=self.propagate_indexed)
+                def f(x):
+                    return func(x, *args, **kwargs)
+                s._proc_func = f
+                return s
+            else:
+                # Fall back on normal behavior of func, interpreting input
+                # as a single image.
+                return func(obj, *args, **kwargs)
+        if process.__doc__ is None:
+            process.__doc__ = ''
+        process.__doc__ = ("This function has been made lazy. When passed\n"
+                           "a Slicerator, it will return a \n"
+                           "new Slicerator of the results. When passed \n"
+                           "any other objects, its behavior is "
+                           "unchanged.\n\n") + process.__doc__
+        return process
 
 
 class slicerate(object):
+    """This decorator is meant to wrap the __getitem__ method in a class
+    definition, like this.
+
+    Parameters
+    ----------
+    propagate : list of str
+        List of attribute names that will be propagated through slicing.
+    propagate_indexed : list of str
+        List of attribute names that will be propagated and reindexed through
+        slicing. Attributes need to be methods accepting an index as its second
+        argument (so directly after `self`).
+
+    Examples
+    --------
+    >>> @slicerate(propagate=[], propagate_indexed=[])
+    ... def __getitem__(self, i):
+    ...     return self.get_data(i)  # actual code of get_frame
+    """
     def __init__(self, propagate=None, propagate_indexed=None):
         if callable(propagate):
             # When decorator is used without (), the first parameter will be
@@ -351,17 +367,21 @@ class slicerate(object):
         self.propagate_indexed = propagate_indexed
 
     def __call__(self, getitem):
+        # @wraps(getitem) don't do this to be able to identify the wrapped func
         def slicerated(obj, key):
             if isinstance(key, int):
                 return getitem(obj, key if key >= 0 else len(obj) + key)
             else:
-                return Slicerator(obj, '__getitem__',
+                return Slicerator(obj, method=getitem.__name__,
                                   propagate=self.propagate,
                                   propagate_indexed=self.propagate_indexed)[key]
         return slicerated
 
 
 def propagate(func):
+    """This decorator is meant to wrap any method in a class, so that it is
+    propagated through slicing. It does not work for properties.
+    """
     if isinstance(func, property):
         # TODO: make this work for properties
         raise ValueError('@propagate is not functioning with properties')
@@ -371,5 +391,9 @@ def propagate(func):
 
 
 def propagate_indexed(func):
+    """This decorator is meant to wrap any method in a class that takes an index
+    as its second argument (so [self, index, ...]). In a sliced object, the
+    index values are reindexed.
+    """
     func._propagate_indexed = True
     return func
