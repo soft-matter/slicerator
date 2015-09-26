@@ -110,6 +110,34 @@ class Slicerator(object):
 
         return cls(Dummy(), propagate=propagate)
 
+    @classmethod
+    def from_class(cls, other_class):
+        if hasattr(other_class, 'propagate'):
+            propagate = other_class.propagate
+        else:
+            propagate = []
+
+        if hasattr(other_class, 'propagate_indexed'):
+            propagate_indexed = other_class.propagate_indexed
+        else:
+            propagate_indexed = []
+
+        getitem = other_class.__getitem__
+        @wraps(getitem)
+        def wrapper(obj, key):
+            if isinstance(key, int):
+                return getitem(obj, key if key >= 0 else len(obj) + key)
+            else:
+                indices, new_length = fancy_indexing(key, len(obj))
+                if new_length is None:
+                    return wrapper(obj, (k for k in indices))
+                return cls(obj, '__getitem__', indices, new_length,
+                           propagate, propagate_indexed)
+
+        setattr(other_class, '__getitem__', wrapper)
+        setattr(other_class, 'is_slicerator', True)
+        return other_class
+
     @property
     def indices(self):
         # Advancing indices won't affect this new copy of self._indices.
@@ -145,53 +173,15 @@ class Slicerator(object):
 
     def __getitem__(self, key):
         """for data access"""
-        _len = len(self)
-        abs_indices = self.indices
-
-        if isinstance(key, slice):
-            # if input is a slice, return another Slicerator
-            start, stop, step = key.indices(_len)
-            rel_indices = range(start, stop, step)
-            new_length = len(rel_indices)
-            indices = _index_generator(rel_indices, abs_indices)
+        if isinstance(key, int):
+            return self._get(self._map_index(key))
+        else:
+            rel_indices, new_length = fancy_indexing(key, len(self))
+            if new_length is None:
+                return (self[k] for k in rel_indices)
+            indices = _index_generator(rel_indices, self.indices)
             return Slicerator(self._ancestor, '__getitem__', indices, new_length,
                               self._propagate, self._propagate_indexed)
-        elif isinstance(key, collections.Iterable):
-            # if the input is an iterable, doing 'fancy' indexing
-            if hasattr(key, '__array__') and hasattr(key, 'dtype'):
-                if key.dtype == bool:
-                    # if we have a bool array, set up masking but defer
-                    # the actual computation, returning another Slicerator
-                    nums = range(len(self))
-                    # This next line fakes up numpy's bool masking without
-                    # importing numpy.
-                    rel_indices = [x for x, y in zip(nums, key) if y]
-                    indices = _index_generator(rel_indices, abs_indices)
-                    new_length = sum(key)
-                    return Slicerator(self._ancestor, '__getitem__', indices,
-                                      new_length, self._propagate,
-                                      self._propagate_indexed)
-            try:
-                new_length = len(key)
-            except TypeError:
-                # The key is a generator; return a plain old generator.
-                # Without knowing the length of the *key*,
-                # we can't give a Slicerator
-                # Also it cannot be checked if values are in range.
-                gen = (self[_k if _k >= 0 else _len + _k] for _k in key)
-                return gen
-            else:
-                # The key is a list of in-range values. Build another
-                # Slicerator, again deferring computation.
-                if any(_k < -_len or _k >= _len for _k in key):
-                    raise IndexError("Keys out of range")
-                rel_indices = ((_k if _k >= 0 else _len + _k) for _k in key)
-                indices = _index_generator(rel_indices, abs_indices)
-                return Slicerator(self._ancestor, '__getitem__', indices,
-                                  new_length, self._propagate,
-                                  self._propagate_indexed)
-        else:
-            return self._get(self._map_index(key))
 
     def __getattr__(self, name):
         if not hasattr(self._ancestor, name):
@@ -203,7 +193,6 @@ class Slicerator(object):
             def attr_reindexed(key, *args, **kwargs):
                 return attr(self._map_index(key), *args, **kwargs)
             return attr_reindexed
-
         raise AttributeError
 
     def __getstate__(self):
@@ -214,6 +203,49 @@ class Slicerator(object):
     def __setstate__(self, data_as_list):
         # When deserializing, restore the Slicerator
         return self.__init__(data_as_list, '__getitem__')
+
+
+def fancy_indexing(key, length):
+    if isinstance(key, slice):
+        start, stop, step = key.indices(length)
+        rel_indices = range(start, stop, step)
+        return rel_indices, len(rel_indices)
+    elif isinstance(key, collections.Iterable):
+        # if the input is an iterable, doing 'fancy' indexing
+        if hasattr(key, '__array__') and hasattr(key, 'dtype'):
+            if key.dtype == bool:
+                # if we have a bool array, set up masking but defer
+                # the actual computation, returning another Slicerator
+                nums = range(length)
+                # This next line fakes up numpy's bool masking without
+                # importing numpy.
+                rel_indices = [x for x, y in zip(nums, key) if y]
+                return rel_indices, sum(key)
+        try:
+            new_length = len(key)
+        except TypeError:
+            # The key is a generator; return a plain old generator.
+            # Without knowing the length of the *key*,
+            # we can't give a Slicerator
+            # Also it cannot be checked if values are in range.
+            gen = ((_k if _k >= 0 else length + _k) for _k in key)
+            return gen, None
+        else:
+            # The key is a list of in-range values. Build another
+            # Slicerator, again deferring computation.
+            if any(_k < -length or _k >= length for _k in key):
+                raise IndexError("Keys out of range")
+            rel_indices = ((_k if _k >= 0 else length + _k) for _k in key)
+            return rel_indices, new_length
+    else:
+        if key < -length or key >= length:
+            raise IndexError("Key out of range")
+        if key >= 0:
+            return key, None
+        else:
+            return length + key, None
+
+    raise ValueError("Unknown key type '{}'.".format(type(key)))
 
 
 def _index_generator(new_indices, old_indices):
@@ -311,8 +343,7 @@ class pipeline(object):
     def __call__(self, func):
         @wraps(func)
         def process(obj, *args, **kwargs):
-            if ((obj.__getitem__.__name__ == 'slicerated') or
-                    isinstance(obj, Slicerator)):
+            if hasattr(obj, 'is_slicerator') or isinstance(obj, Slicerator):
                 s = Slicerator(obj, propagate=self.propagate,
                                propagate_indexed=self.propagate_indexed)
                 def f(x):
@@ -331,64 +362,3 @@ class pipeline(object):
                            "any other objects, its behavior is "
                            "unchanged.\n\n") + process.__doc__
         return process
-
-
-class slicerate(object):
-    """This decorator is meant to wrap the __getitem__ method in a class
-    definition, like this.
-
-    Parameters
-    ----------
-    propagate : list of str
-        List of attribute names that will be propagated through slicing.
-    propagate_indexed : list of str
-        List of attribute names that will be propagated and reindexed through
-        slicing. Attributes need to be methods accepting an index as its second
-        argument (so directly after `self`).
-
-    Examples
-    --------
-    >>> @slicerate(propagate=[], propagate_indexed=[])
-    ... def __getitem__(self, i):
-    ...     return self.get_data(i)  # actual code of get_frame
-    """
-    def __init__(self, propagate=None, propagate_indexed=None):
-        if callable(propagate):
-            # When decorator is used without (), the first parameter will be
-            # the decorated function itself.
-            raise ValueError('The decorator @slicerate requires arguments. Put '
-                             '() if you do not want to propagate attributes.')
-        self.propagate = propagate
-        self.propagate_indexed = propagate_indexed
-
-    def __call__(self, getitem):
-        # @wraps(getitem) don't do this to be able to identify the wrapped func
-        def slicerated(obj, key):
-            if isinstance(key, int):
-                return getitem(obj, key if key >= 0 else len(obj) + key)
-            else:
-                return Slicerator(obj, method=getitem.__name__,
-                                  propagate=self.propagate,
-                                  propagate_indexed=self.propagate_indexed)[key]
-        return slicerated
-
-
-def propagate(func):
-    """This decorator is meant to wrap any method in a class, so that it is
-    propagated through slicing. It does not work for properties.
-    """
-    if isinstance(func, property):
-        # TODO: make this work for properties
-        raise ValueError('@propagate is not functioning with properties')
-    else:
-        func._propagate = True
-    return func
-
-
-def propagate_indexed(func):
-    """This decorator is meant to wrap any method in a class that takes an index
-    as its second argument (so [self, index, ...]). In a sliced object, the
-    index values are reindexed.
-    """
-    func._propagate_indexed = True
-    return func

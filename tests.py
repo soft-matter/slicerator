@@ -9,7 +9,7 @@ import nose
 from six import BytesIO
 import pickle
 from nose.tools import assert_true, assert_false, assert_equal, assert_raises
-from slicerator import *
+from slicerator import Slicerator, pipeline
 
 path, _ = os.path.split(os.path.abspath(__file__))
 path = os.path.join(path, 'data')
@@ -263,21 +263,22 @@ def test_serialize():
     compare_slice_to_list(v2, list('Abcdefghij'))
 
 def test_class():
+    @Slicerator.from_class
     class Dummy(object):
+        propagate_indexed = ['time', 'return_i']
+        propagate = ['filename', 'other_attr']
         def __init__(self):
             self.frame = list('abcdefghij')
 
         def __len__(self):
             return len(self.frame)
 
-        @slicerate(propagate_indexed=['time'], propagate=['filename'])
         def __getitem__(self, i):
             return self.frame[i]  # actual code of get_frame
 
         def time(self, i):
             return i * 5
 
-        @propagate_indexed
         def return_i(self, i):
             return i
 
@@ -285,7 +286,6 @@ def test_class():
         def filename(self):
             return 'filename'
 
-        @propagate
         def other_attr(self):
             return 'other_string'
 
