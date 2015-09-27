@@ -160,7 +160,7 @@ class Slicerator(object):
         return cls(Dummy(), propagated_attrs=propagated_attrs)
 
     @classmethod
-    def from_class(cls, other_class):
+    def from_class(cls, other_class, propagated_attrs=None):
         getitem = other_class.__getitem__
         @wraps(getitem)
         def wrapper(obj, key):
@@ -170,7 +170,7 @@ class Slicerator(object):
                 indices, new_length = key_to_indices(key, len(obj))
                 if new_length is None:
                     return wrapper(obj, (k for k in indices))
-                return cls(obj, indices, new_length)
+                return cls(obj, indices, new_length, propagated_attrs)
 
         setattr(other_class, '__getitem__', wrapper)
         setattr(other_class, '_is_slicerator', True)
