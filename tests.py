@@ -143,6 +143,11 @@ def test_no_len_raises():
     with assert_raises(ValueError):
         Slicerator((i for i in range(5)), (i for i in range(5)))
 
+def test_from_func():
+    v = Slicerator.from_func(lambda x: 'abcdefghij'[x], length=10)
+    compare_slice_to_list(v, list('abcdefghij'))
+    compare_slice_to_list(v[1:], list('bcdefghij'))
+    compare_slice_to_list(v[1:][:4], list('bcde'))
 
 def _capitalize(letter):
     return letter.upper()
@@ -163,7 +168,7 @@ def _a_to_z(letter):
 
 
 def test_pipeline_simple():
-    capitalize = pipeline()(_capitalize)
+    capitalize = pipeline(_capitalize)
     cap_v = capitalize(v[:1])
 
     assert_letters_equal([cap_v[0]], [_capitalize(v[0])])
@@ -178,14 +183,14 @@ def test_getattr():
         attr1 = 'hello'
         attr2 = 'hello again'
 
+        @Slicerator.index_attr
         def s(self, i):
             return list('ABCDEFGHIJ')[i]
 
         def close(self):
             pass
 
-    a = Slicerator(MyList('abcdefghij'), propagate=['attr1'],
-                   propagate_indexed=['s'])
+    a = Slicerator(MyList('abcdefghij'), propagated_attrs=['attr1', 's'])
     assert_letters_equal(a, list('abcdefghij'))
     assert_true(hasattr(a, 'attr1'))
     assert_false(hasattr(a, 'attr2'))
@@ -195,15 +200,83 @@ def test_getattr():
     with assert_raises(AttributeError):
         a[:5].nonexistent_attr
 
-    s1 = a[::2].s
-    assert_equal([s1(i) for i in range(5)], list('ACEGI'))
-    s2 = a[::2][1:].s
-    assert_equal([s2(i) for i in range(4)], list('CEGI'))
-    assert_equal(a[::2][1:].s(0), 'C')
+    compare_slice_to_list(list(a[::2].s), list('ACEGI'))
+    compare_slice_to_list(list(a[::2][1:].s), list('CEGI'))
+
+
+def test_getattr_subclass():
+    @Slicerator.from_class
+    class Dummy(object):
+        propagated_attrs = ['attr1']
+        def __init__(self):
+            self.frame = list('abcdefghij')
+
+        def __len__(self):
+            return len(self.frame)
+
+        def __getitem__(self, i):
+            return self.frame[i]
+
+        def attr1(self):
+            # propagates through slices of Dummy
+            return 'sliced'
+
+        @Slicerator.propagate_attr
+        def attr2(self):
+            # propagates through slices of Dummy and subclasses
+            return 'also in subclasses'
+
+        def attr3(self):
+            # does not propagate
+            return 'only unsliced'
+
+
+    class SubClass(Dummy):
+        propagated_attrs = ['attr4']  # overwrites propagated attrs from Dummy
+
+        def __len__(self):
+            return len(self.frame)
+
+        @property
+        def attr4(self):
+             # propagates through slices of SubClass
+            return 'only subclass'
+
+    dummy = Dummy()
+    subclass = SubClass()
+    assert_true(hasattr(dummy, 'attr1'))
+    assert_true(hasattr(dummy, 'attr2'))
+    assert_true(hasattr(dummy, 'attr3'))
+    assert_false(hasattr(dummy, 'attr4'))
+
+    assert_true(hasattr(dummy[1:], 'attr1'))
+    assert_true(hasattr(dummy[1:], 'attr2'))
+    assert_false(hasattr(dummy[1:], 'attr3'))
+    assert_false(hasattr(dummy[1:], 'attr4'))
+
+    assert_true(hasattr(dummy[1:][1:], 'attr1'))
+    assert_true(hasattr(dummy[1:][1:], 'attr2'))
+    assert_false(hasattr(dummy[1:][1:], 'attr3'))
+    assert_false(hasattr(dummy[1:][1:], 'attr4'))
+
+    assert_true(hasattr(subclass, 'attr1'))
+    assert_true(hasattr(subclass, 'attr2'))
+    assert_true(hasattr(subclass, 'attr3'))
+    assert_true(hasattr(subclass, 'attr4'))
+
+    assert_false(hasattr(subclass[1:], 'attr1'))
+    assert_true(hasattr(subclass[1:], 'attr2'))
+    assert_false(hasattr(subclass[1:], 'attr3'))
+    assert_true(hasattr(subclass[1:], 'attr4'))
+
+    assert_false(hasattr(subclass[1:][1:], 'attr1'))
+    assert_true(hasattr(subclass[1:][1:], 'attr2'))
+    assert_false(hasattr(subclass[1:][1:], 'attr3'))
+    assert_true(hasattr(subclass[1:][1:], 'attr4'))
 
 
 def test_pipeline_with_args():
-    capitalize = pipeline()(_capitalize_if_equal)
+    capitalize = pipeline(_capitalize_if_equal)
     cap_a = capitalize(v, 'a')
     cap_b = capitalize(v, 'b')
 
@@ -215,12 +288,13 @@ def test_pipeline_with_args():
 
 
 def test_composed_pipelines():
-    a_to_z = pipeline()(_a_to_z)
-    capitalize = pipeline()(_capitalize_if_equal)
+    a_to_z = pipeline(_a_to_z)
+    capitalize = pipeline(_capitalize_if_equal)
 
     composed = capitalize(a_to_z(v), 'c')
 
     assert_letters_equal(composed, 'zbCdefghij')
+
 
 def test_serialize():
     # dump Slicerator
@@ -254,7 +328,7 @@ def test_serialize():
     compare_slice_to_list(v2[2:][:-1], list('gh'))
 
     # test pipeline
-    capitalize = pipeline()(_capitalize_if_equal)
+    capitalize = pipeline(_capitalize_if_equal)
     stream = BytesIO()
     pickle.dump(capitalize(v, 'a'), stream)
     stream.seek(0)
@@ -262,11 +336,10 @@ def test_serialize():
     stream.close()
     compare_slice_to_list(v2, list('Abcdefghij'))
 
-def test_class():
+
+def test_from_class():
     @Slicerator.from_class
     class Dummy(object):
-        propagate_indexed = ['time', 'return_i']
-        propagate = ['filename', 'other_attr']
         def __init__(self):
             self.frame = list('abcdefghij')
 
@@ -276,36 +349,16 @@ def test_class():
         def __getitem__(self, i):
             return self.frame[i]  # actual code of get_frame
 
-        def time(self, i):
-            return i * 5
-
-        def return_i(self, i):
-            return i
-
-        @property
-        def filename(self):
-            return 'filename'
-
-        def other_attr(self):
-            return 'other_string'
 
     dummy = Dummy()
     compare_slice_to_list(dummy, 'abcdefghij')
     compare_slice_to_list(dummy[1:], 'bcdefghij')
-    assert_equal(dummy[1:].return_i(0), 1)
-    assert_equal(dummy[1:].time(0), 5)
-    assert_equal(dummy[1:].filename, 'filename')
-    assert_equal(dummy[1:].other_attr(), 'other_string')
-
     compare_slice_to_list(dummy[1:][2:], 'defghij')
-    assert_equal(dummy[1:][2:].return_i(0), 3)
-    assert_equal(dummy[1:][2:].time(0), 15)
-    assert_equal(dummy[1:][2:].filename, 'filename')
-    assert_equal(dummy[1:][2:].other_attr(), 'other_string')
 
-    capitalize = pipeline()(_capitalize_if_equal)
+    capitalize = pipeline(_capitalize_if_equal)
     cap_b = capitalize(dummy, 'b')
     assert_letters_equal(cap_b, 'aBcdefghij')
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
