@@ -49,7 +49,7 @@ class SliceableAttribute(object):
 
 class Slicerator(object):
 
-    def __init__(self, ancestor, method='__getitem__', indices=None,
+    def __init__(self, ancestor, indices=None,
                  length=None, propagated_attrs=None):
         """A generator that supports fancy indexing
 
@@ -76,9 +76,6 @@ class Slicerator(object):
             length of indicies
             This is required if `indices` is a generator,
             that is, if `len(indices)` is invalid
-        method : string, optional
-            method of ancestor object that accept an integer as its argument.
-            Defaults to '__getitem__'.
         propagated_attrs : list of str, optional
             list of attributes to be propagated into Slicerator
             Overwrites contents of class propagated_attrs field and decorators.
@@ -101,13 +98,16 @@ class Slicerator(object):
         >>> type(v3)
         generator
         """
-        if indices is None:
+        if indices is None and length is None:
             try:
-                indices = range(len(ancestor))
+                length = len(ancestor)
+                indices = range(length)
             except TypeError:
-                raise ValueError("The indices parameter is required in this "
+                raise ValueError("The length parameter is required in this "
                                  "case because len(ancestor) is not valid.")
-        if length is None:
+        elif indices is None:
+            indices = range(length)
+        elif length is None:
             try:
                 length = len(indices)
             except TypeError:
@@ -132,7 +132,6 @@ class Slicerator(object):
 
         self._len = length
         self._ancestor = ancestor
-        self._method = method
         self._indices = indices
         self._proc_func = lambda image: image
 
@@ -171,7 +170,7 @@ class Slicerator(object):
                 indices, new_length = key_to_indices(key, len(obj))
                 if new_length is None:
                     return wrapper(obj, (k for k in indices))
-                return cls(obj, '__getitem__', indices, new_length)
+                return cls(obj, indices, new_length)
 
         setattr(other_class, '__getitem__', wrapper)
         setattr(other_class, '_is_slicerator', True)
@@ -202,7 +201,7 @@ class Slicerator(object):
 
     def _get(self, key):
         "Wrap ancestor's method in a processing function."
-        return self._proc_func(getattr(self._ancestor, self._method)(key))
+        return self._proc_func(self._ancestor[key])
 
     def _map_index(self, key):
         if key < -self._len or key >= self._len:
@@ -237,7 +236,7 @@ class Slicerator(object):
             if new_length is None:
                 return (self[k] for k in rel_indices)
             indices = _index_generator(rel_indices, self.indices)
-            return Slicerator(self._ancestor, '__getitem__', indices,
+            return Slicerator(self._ancestor, indices,
                               new_length, self.propagated_attrs)
 
     def __getattr__(self, name):
@@ -259,7 +258,7 @@ class Slicerator(object):
 
     def __setstate__(self, data_as_list):
         # When deserializing, restore the Slicerator
-        return self.__init__(data_as_list, '__getitem__')
+        return self.__init__(data_as_list)
 
 
 def key_to_indices(key, length):
