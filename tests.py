@@ -9,7 +9,7 @@ import nose
 from six import BytesIO
 import pickle
 from nose.tools import assert_true, assert_false, assert_equal, assert_raises
-from slicerator import Slicerator, pipeline
+from slicerator import Slicerator, pipeline, index_attr, propagate_attr
 
 path, _ = os.path.split(os.path.abspath(__file__))
 path = os.path.join(path, 'data')
@@ -183,14 +183,14 @@ def test_getattr():
         attr1 = 'hello'
         attr2 = 'hello again'
 
-        @Slicerator.index_attr
+        @index_attr
         def s(self, i):
             return list('ABCDEFGHIJ')[i]
 
         def close(self):
             pass
 
-    a = Slicerator(MyList('abcdefghij'), propagated_attrs=['attr1', 's'])
+    a = Slicerator(MyList('abcdefghij'), propagate_attrs=['attr1', 's'])
     assert_letters_equal(a, list('abcdefghij'))
     assert_true(hasattr(a, 'attr1'))
     assert_false(hasattr(a, 'attr2'))
@@ -207,7 +207,7 @@ def test_getattr():
 def test_getattr_subclass():
     @Slicerator.from_class
     class Dummy(object):
-        propagated_attrs = ['attr1']
+        propagate_attrs = ['attr1']
         def __init__(self):
             self.frame = list('abcdefghij')
 
@@ -221,7 +221,7 @@ def test_getattr_subclass():
             # propagates through slices of Dummy
             return 'sliced'
 
-        @Slicerator.propagate_attr
+        @propagate_attr
         def attr2(self):
             # propagates through slices of Dummy and subclasses
             return 'also in subclasses'
@@ -232,7 +232,7 @@ def test_getattr_subclass():
 
 
     class SubClass(Dummy):
-        propagated_attrs = ['attr4']  # overwrites propagated attrs from Dummy
+        propagate_attrs = ['attr4']  # overwrites propagated attrs from Dummy
 
         def __len__(self):
             return len(self.frame)
