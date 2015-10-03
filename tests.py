@@ -338,8 +338,8 @@ def test_serialize():
 
 
 def test_from_class():
-    @Slicerator.from_class
     class Dummy(object):
+        """DocString"""
         def __init__(self):
             self.frame = list('abcdefghij')
 
@@ -347,10 +347,24 @@ def test_from_class():
             return len(self.frame)
 
         def __getitem__(self, i):
+            """Other Docstring"""
             return self.frame[i]  # actual code of get_frame
 
+        def __repr__(self):
+            return 'Repr'
 
-    dummy = Dummy()
+    DummySli = Slicerator.from_class(Dummy)
+    assert Dummy()[:2] == ['a', 'b']  # Dummy is unaffected
+
+    # class slots propagate
+    assert DummySli.__name__ == Dummy.__name__
+    assert DummySli.__doc__ == Dummy.__doc__
+    assert DummySli.__module__ == Dummy.__module__
+
+    dummy = DummySli()
+    assert isinstance(dummy, Dummy)  # still instance of Dummy
+    assert repr(dummy) == 'Repr'  # repr propagates
+
     compare_slice_to_list(dummy, 'abcdefghij')
     compare_slice_to_list(dummy[1:], 'bcdefghij')
     compare_slice_to_list(dummy[1:][2:], 'defghij')

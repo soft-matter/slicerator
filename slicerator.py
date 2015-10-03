@@ -160,21 +160,46 @@ class Slicerator(object):
         return cls(Dummy(), propagated_attrs=propagated_attrs)
 
     @classmethod
-    def from_class(cls, other_class, propagated_attrs=None):
-        getitem = other_class.__getitem__
-        @wraps(getitem)
-        def wrapper(obj, key):
-            if isinstance(key, int):
-                return getitem(obj, key if key >= 0 else len(obj) + key)
-            else:
-                indices, new_length = key_to_indices(key, len(obj))
-                if new_length is None:
-                    return wrapper(obj, (k for k in indices))
-                return cls(obj, indices, new_length, propagated_attrs)
+    def from_class(cls, some_class, propagated_attrs=None):
+        """
+        Make an existing class support repeated slicing.
 
-        setattr(other_class, '__getitem__', wrapper)
-        setattr(other_class, '_is_slicerator', True)
-        return other_class
+        The existing class should support indexing (method __getitem__) and
+        it should define a length (method __len__).
+
+        The result will look exactly like the existing class (__name__, __doc__,
+        __module__, __repr__ will be propagated), but the __getitem__ will be
+        renamed to _get and __getitem__ will produce a Slicerator object
+        when sliced.
+
+        Parameters
+        ----------
+        some_class : class
+        propagated_attrs : list, optional
+            list of attributes to be propagated into Slicerator
+        """
+
+        class Slicerator_subclass(some_class):
+            _slicerator_hook = True
+            _get = some_class.__getitem__
+
+            def __getitem__(self, i):
+                """Getitem supports repeated slicing via Slicerator objects."""
+                if isinstance(i, int):
+                    return self._get(i if i >= 0 else len(self) + i)
+                else:
+                    indices, new_length = key_to_indices(i, len(self))
+                    if new_length is None:
+                        return self[(k for k in indices)]
+                    return cls(self, indices, new_length, propagated_attrs)
+
+        for name in ['__doc__', '__name__', '__module__', '__repr__']:
+            try:
+                setattr(Slicerator_subclass, name, getattr(some_class, name))
+            except AttributeError:
+                pass
+
+        return Slicerator_subclass
 
     @classmethod
     def index_attr(cls, func):
@@ -382,7 +407,7 @@ def pipeline(func):
     """
     @wraps(func)
     def process(obj, *args, **kwargs):
-        if hasattr(obj, '_is_slicerator') or isinstance(obj, Slicerator):
+        if hasattr(obj, '_slicerator_hook') or isinstance(obj, Slicerator):
             s = Slicerator(obj)
             def f(x):
                 return func(x, *args, **kwargs)
