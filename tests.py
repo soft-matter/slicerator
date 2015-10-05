@@ -174,6 +174,23 @@ def test_pipeline_simple():
     assert_letters_equal([cap_v[0]], [_capitalize(v[0])])
 
 
+def test_pipeline_propagation():
+    capitalize = pipeline(_capitalize)
+    cap_v = capitalize(v)
+
+    assert_letters_equal([cap_v[:1][0]], ['A'])
+    assert_letters_equal([cap_v[:1][:2][0]], ['A'])
+
+
+def test_pipeline_nesting():
+    capitalize = pipeline(_capitalize)
+    a_to_z = pipeline(_a_to_z)
+    nested_v = capitalize(a_to_z(v))
+
+    assert_letters_equal([nested_v[0]], ['Z'])
+    assert_letters_equal([nested_v[:1][0]], ['Z'])
+
+
 def test_repr():
     repr(v)
 

@@ -9,7 +9,7 @@ from functools import wraps
 
 class Slicerator(object):
     def __init__(self, ancestor, indices=None, length=None,
-                 propagate_attrs=None):
+                 propagate_attrs=None, proc_func=None):
         """A generator that supports fancy indexing
 
         When sliced using any iterable with a known length, it returns another
@@ -32,11 +32,15 @@ class Slicerator(object):
             Giving indices into `ancestor`.
             Required if len(ancestor) is invalid.
         length : integer
-            length of indicies
+            length of indices
             This is required if `indices` is a generator,
             that is, if `len(indices)` is invalid
         propagate_attrs : list of str, optional
             list of attributes to be propagated into Slicerator
+        proc_func : function
+            function that processes data returned by Slicerator. The function
+            acts element-wise and is only evaluated when data is actually
+            returned
 
         Examples
         --------
@@ -91,7 +95,10 @@ class Slicerator(object):
         self._len = length
         self._ancestor = ancestor
         self._indices = indices
-        self._proc_func = lambda image: image
+        if proc_func is None:
+            self._proc_func = lambda x: x
+        else:
+            self._proc_func = proc_func
 
     @classmethod
     def from_func(cls, func, length, propagate_attrs=None):
@@ -225,8 +232,8 @@ class Slicerator(object):
             if new_length is None:
                 return (self[k] for k in rel_indices)
             indices = _index_generator(rel_indices, self.indices)
-            return Slicerator(self._ancestor, indices,
-                              new_length, self._propagate_attrs)
+            return Slicerator(self._ancestor, indices, new_length,
+                              self._propagate_attrs, self._proc_func)
 
     def __getattr__(self, name):
         # to avoid infinite recursion, always check if public field is there
@@ -384,12 +391,14 @@ def pipeline(func):
     """
     @wraps(func)
     def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_hook') or isinstance(obj, Slicerator):
-            s = Slicerator(obj)
+        if hasattr(obj, '_slicerator_hook'):
             def f(x):
                 return func(x, *args, **kwargs)
-            s._proc_func = f
-            return s
+            return Slicerator(obj, proc_func=f)
+        elif isinstance(obj, Slicerator):
+            def f(x):
+                return func(obj._proc_func(x), *args, **kwargs)
+            return Slicerator(obj, proc_func=f)
         else:
             # Fall back on normal behavior of func, interpreting input
             # as a single image.
