@@ -391,6 +391,26 @@ def test_from_class():
     assert_letters_equal(cap_b, 'aBcdefghij')
 
 
+def test_lazy_hasattr():
+    # this ensures that the Slicerator init does not evaluate all properties
+    class Dummy(object):
+        """DocString"""
+        def __init__(self):
+            self.frame = list('abcdefghij')
+
+        def __len__(self):
+            return len(self.frame)
+
+        def __getitem__(self, i):
+            """Other Docstring"""
+            return self.frame[i]  # actual code of get_frame
+
+        @property
+        def forbidden_property(self):
+            raise RuntimeError()
+
+    DummySli = Slicerator.from_class(Dummy)
+
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
                    exit=False)

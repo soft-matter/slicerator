@@ -7,6 +7,15 @@ import itertools
 from functools import wraps
 
 
+def _iter_attr(obj):
+    try:
+        for ns in [obj] + obj.__class__.mro():
+            for attr in ns.__dict__:
+                yield ns.__dict__[attr]
+    except AttributeError:
+        raise StopIteration  # obj has no __dict__
+
+
 class Slicerator(object):
     def __init__(self, ancestor, indices=None, length=None,
                  propagate_attrs=None, proc_func=None):
@@ -88,9 +97,9 @@ class Slicerator(object):
                 self._propagate_attrs = []
 
             # add methods having the _propagate hook
-            for name in dir(ancestor):
-                if hasattr(getattr(ancestor, name), '_propagate_hook'):
-                    self._propagate_attrs.append(name)
+            for attr in _iter_attr(ancestor):
+                if hasattr(attr, '_propagate_hook'):
+                    self._propagate_attrs.append(attr.__name__)
 
         self._len = length
         self._ancestor = ancestor
