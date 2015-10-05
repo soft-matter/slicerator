@@ -173,12 +173,10 @@ class Slicerator(object):
 
             def __getitem__(self, i):
                 """Getitem supports repeated slicing via Slicerator objects."""
-                if isinstance(i, int):
-                    return self._get(i if i >= 0 else len(self) + i)
+                indices, new_length = key_to_indices(i, len(self))
+                if new_length is None:
+                    return self._get(indices)
                 else:
-                    indices, new_length = key_to_indices(i, len(self))
-                    if new_length is None:
-                        return self[(k for k in indices)]
                     return cls(self, indices, new_length, propagate_attrs)
 
         for name in ['__name__', '__module__', '__repr__']:
