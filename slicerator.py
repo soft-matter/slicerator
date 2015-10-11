@@ -36,7 +36,7 @@ class Slicerator(object):
         propagated. Attributes can be white_listed by using the optional
         parameter `propagated_attrs`.
 
-        Class methods taking an index will be remapped if they are decorated
+        Methods taking an index will be remapped if they are decorated
         with `index_attr`. They also have to be present in the
         `propagate_attrs` list.
 
@@ -160,7 +160,7 @@ class Slicerator(object):
         On the contrary, option 3 is bound to the class, so this can be
         overwritten by the subclass.
 
-        Class methods taking an index will be remapped if they are decorated
+        Methods taking an index will be remapped if they are decorated
         with `index_attr`. This decorator does not ensure that the method is
         propagated.
 
