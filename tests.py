@@ -8,8 +8,8 @@ import types
 import nose
 from six import BytesIO
 import pickle
-from nose.tools import assert_true, assert_equal, assert_raises
-from slicerator import Slicerator, pipeline
+from nose.tools import assert_true, assert_false, assert_equal, assert_raises
+from slicerator import Slicerator, pipeline, index_attr, propagate_attr
 
 path, _ = os.path.split(os.path.abspath(__file__))
 path = os.path.join(path, 'data')
@@ -143,6 +143,11 @@ def test_no_len_raises():
     with assert_raises(ValueError):
         Slicerator((i for i in range(5)), (i for i in range(5)))
 
+def test_from_func():
+    v = Slicerator.from_func(lambda x: 'abcdefghij'[x], length=10)
+    compare_slice_to_list(v, list('abcdefghij'))
+    compare_slice_to_list(v[1:], list('bcdefghij'))
+    compare_slice_to_list(v[1:][:4], list('bcde'))
 
 def _capitalize(letter):
     return letter.upper()
@@ -169,28 +174,122 @@ def test_pipeline_simple():
     assert_letters_equal([cap_v[0]], [_capitalize(v[0])])
 
 
+def test_pipeline_propagation():
+    capitalize = pipeline(_capitalize)
+    cap_v = capitalize(v)
+
+    assert_letters_equal([cap_v[:1][0]], ['A'])
+    assert_letters_equal([cap_v[:1][:2][0]], ['A'])
+
+
+def test_pipeline_nesting():
+    capitalize = pipeline(_capitalize)
+    a_to_z = pipeline(_a_to_z)
+    nested_v = capitalize(a_to_z(v))
+
+    assert_letters_equal([nested_v[0]], ['Z'])
+    assert_letters_equal([nested_v[:1][0]], ['Z'])
+
+
 def test_repr():
     repr(v)
 
 
 def test_getattr():
     class MyList(list):
-        my_attr = 'hello'
-        s = Slicerator(list('ABCDEFGHIJ'), range(10))
+        attr1 = 'hello'
+        attr2 = 'hello again'
 
-    a = Slicerator(MyList('abcdefghij'), range(10))
+        @index_attr
+        def s(self, i):
+            return list('ABCDEFGHIJ')[i]
+
+        def close(self):
+            pass
+
+    a = Slicerator(MyList('abcdefghij'), propagate_attrs=['attr1', 's'])
     assert_letters_equal(a, list('abcdefghij'))
-    assert_true(hasattr(a, 'my_attr'))
+    assert_true(hasattr(a, 'attr1'))
+    assert_false(hasattr(a, 'attr2'))
     assert_true(hasattr(a, 's'))
-    assert_equal(a.my_attr, 'hello')
+    assert_false(hasattr(a, 'close'))
+    assert_equal(a.attr1, 'hello')
     with assert_raises(AttributeError):
         a[:5].nonexistent_attr
 
-    s1 = a[::2].s
-    assert_equal(list(s1), list('ACEGI'))
-    s2 = a[::2][1:].s
-    assert_equal(list(s2), list('CEGI'))
-    assert_equal(a[::2][1:].s[0], 'C')
+    compare_slice_to_list(list(a[::2].s), list('ACEGI'))
+    compare_slice_to_list(list(a[::2][1:].s), list('CEGI'))
+
+
+def test_getattr_subclass():
+    @Slicerator.from_class
+    class Dummy(object):
+        propagate_attrs = ['attr1']
+        def __init__(self):
+            self.frame = list('abcdefghij')
+
+        def __len__(self):
+            return len(self.frame)
+
+        def __getitem__(self, i):
+            return self.frame[i]
+
+        def attr1(self):
+            # propagates through slices of Dummy
+            return 'sliced'
+
+        @propagate_attr
+        def attr2(self):
+            # propagates through slices of Dummy and subclasses
+            return 'also in subclasses'
+
+        def attr3(self):
+            # does not propagate
+            return 'only unsliced'
+
+
+    class SubClass(Dummy):
+        propagate_attrs = ['attr4']  # overwrites propagated attrs from Dummy
+
+        def __len__(self):
+            return len(self.frame)
+
+        @property
+        def attr4(self):
+             # propagates through slices of SubClass
+            return 'only subclass'
+
+    dummy = Dummy()
+    subclass = SubClass()
+    assert_true(hasattr(dummy, 'attr1'))
+    assert_true(hasattr(dummy, 'attr2'))
+    assert_true(hasattr(dummy, 'attr3'))
+    assert_false(hasattr(dummy, 'attr4'))
+
+    assert_true(hasattr(dummy[1:], 'attr1'))
+    assert_true(hasattr(dummy[1:], 'attr2'))
+    assert_false(hasattr(dummy[1:], 'attr3'))
+    assert_false(hasattr(dummy[1:], 'attr4'))
+
+    assert_true(hasattr(dummy[1:][1:], 'attr1'))
+    assert_true(hasattr(dummy[1:][1:], 'attr2'))
+    assert_false(hasattr(dummy[1:][1:], 'attr3'))
+    assert_false(hasattr(dummy[1:][1:], 'attr4'))
+
+    assert_true(hasattr(subclass, 'attr1'))
+    assert_true(hasattr(subclass, 'attr2'))
+    assert_true(hasattr(subclass, 'attr3'))
+    assert_true(hasattr(subclass, 'attr4'))
+
+    assert_false(hasattr(subclass[1:], 'attr1'))
+    assert_true(hasattr(subclass[1:], 'attr2'))
+    assert_false(hasattr(subclass[1:], 'attr3'))
+    assert_true(hasattr(subclass[1:], 'attr4'))
+
+    assert_false(hasattr(subclass[1:][1:], 'attr1'))
+    assert_true(hasattr(subclass[1:][1:], 'attr2'))
+    assert_false(hasattr(subclass[1:][1:], 'attr3'))
+    assert_true(hasattr(subclass[1:][1:], 'attr4'))
 
 
 def test_pipeline_with_args():
@@ -212,6 +311,7 @@ def test_composed_pipelines():
     composed = capitalize(a_to_z(v), 'c')
 
     assert_letters_equal(composed, 'zbCdefghij')
+
 
 def test_serialize():
     # dump Slicerator
@@ -254,6 +354,63 @@ def test_serialize():
     compare_slice_to_list(v2, list('Abcdefghij'))
 
 
+def test_from_class():
+    class Dummy(object):
+        """DocString"""
+        def __init__(self):
+            self.frame = list('abcdefghij')
+
+        def __len__(self):
+            return len(self.frame)
+
+        def __getitem__(self, i):
+            """Other Docstring"""
+            return self.frame[i]  # actual code of get_frame
+
+        def __repr__(self):
+            return 'Repr'
+
+    DummySli = Slicerator.from_class(Dummy)
+    assert Dummy()[:2] == ['a', 'b']  # Dummy is unaffected
+
+    # class slots propagate
+    assert DummySli.__name__ == Dummy.__name__
+    assert DummySli.__doc__ == Dummy.__doc__
+    assert DummySli.__module__ == Dummy.__module__
+
+    dummy = DummySli()
+    assert isinstance(dummy, Dummy)  # still instance of Dummy
+    assert repr(dummy) == 'Repr'  # repr propagates
+
+    compare_slice_to_list(dummy, 'abcdefghij')
+    compare_slice_to_list(dummy[1:], 'bcdefghij')
+    compare_slice_to_list(dummy[1:][2:], 'defghij')
+
+    capitalize = pipeline(_capitalize_if_equal)
+    cap_b = capitalize(dummy, 'b')
+    assert_letters_equal(cap_b, 'aBcdefghij')
+
+
+def test_lazy_hasattr():
+    # this ensures that the Slicerator init does not evaluate all properties
+    class Dummy(object):
+        """DocString"""
+        def __init__(self):
+            self.frame = list('abcdefghij')
+
+        def __len__(self):
+            return len(self.frame)
+
+        def __getitem__(self, i):
+            """Other Docstring"""
+            return self.frame[i]  # actual code of get_frame
+
+        @property
+        def forbidden_property(self):
+            raise RuntimeError()
+
+    DummySli = Slicerator.from_class(Dummy)
+
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
-                    exit=False)
+                   exit=False)
