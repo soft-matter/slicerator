@@ -180,7 +180,7 @@ class Slicerator(object):
             this will overwrite any other propagation list
         """
 
-        class Slicerator_subclass(some_class):
+        class SliceratorSubclass(some_class):
             _slicerator_hook = True
             _get = some_class.__getitem__
             if hasattr(some_class, '__doc__'):
@@ -196,11 +196,11 @@ class Slicerator(object):
 
         for name in ['__name__', '__module__', '__repr__']:
             try:
-                setattr(Slicerator_subclass, name, getattr(some_class, name))
+                setattr(SliceratorSubclass, name, getattr(some_class, name))
             except AttributeError:
                 pass
 
-        return Slicerator_subclass
+        return SliceratorSubclass
 
     @property
     def indices(self):
