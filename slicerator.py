@@ -36,7 +36,7 @@ class Slicerator(object):
         propagated. Attributes can be white_listed by using the optional
         parameter `propagated_attrs`.
 
-        Class methods taking an index will be remapped if they are decorated
+        Methods taking an index will be remapped if they are decorated
         with `index_attr`. They also have to be present in the
         `propagate_attrs` list.
 
@@ -102,9 +102,9 @@ class Slicerator(object):
             else:
                 self._propagate_attrs = []
 
-            # add methods having the _propagate hook
+            # add methods having the _propagate flag
             for attr in _iter_attr(ancestor):
-                if hasattr(attr, '_propagate_hook'):
+                if hasattr(attr, '_propagate_flag'):
                     self._propagate_attrs.append(attr.__name__)
 
         self._len = length
@@ -160,7 +160,7 @@ class Slicerator(object):
         On the contrary, option 3 is bound to the class, so this can be
         overwritten by the subclass.
 
-        Class methods taking an index will be remapped if they are decorated
+        Methods taking an index will be remapped if they are decorated
         with `index_attr`. This decorator does not ensure that the method is
         propagated.
 
@@ -180,8 +180,8 @@ class Slicerator(object):
             this will overwrite any other propagation list
         """
 
-        class Slicerator_subclass(some_class):
-            _slicerator_hook = True
+        class SliceratorSubclass(some_class):
+            _slicerator_flag = True
             _get = some_class.__getitem__
             if hasattr(some_class, '__doc__'):
                 __doc__ = some_class.__doc__  # for Python 2, do it here
@@ -196,11 +196,11 @@ class Slicerator(object):
 
         for name in ['__name__', '__module__', '__repr__']:
             try:
-                setattr(Slicerator_subclass, name, getattr(some_class, name))
+                setattr(SliceratorSubclass, name, getattr(some_class, name))
             except AttributeError:
                 pass
 
-        return Slicerator_subclass
+        return SliceratorSubclass
 
     @property
     def indices(self):
@@ -254,7 +254,7 @@ class Slicerator(object):
             self._propagate_attrs = []
         if name in self._propagate_attrs:
             attr = getattr(self._ancestor, name)
-            if hasattr(attr, '_index_hook'):
+            if hasattr(attr, '_index_flag'):
                 return SliceableAttribute(self, getattr(self._ancestor, name))
             else:
                 return getattr(self._ancestor, name)
@@ -404,7 +404,7 @@ def pipeline(func):
     """
     @wraps(func)
     def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_hook'):
+        if hasattr(obj, '_slicerator_flag'):
             def f(x):
                 return func(x, *args, **kwargs)
             return Slicerator(obj, proc_func=f)
@@ -428,7 +428,7 @@ def pipeline(func):
 
 
 def propagate_attr(func):
-    func._propagate_hook = True
+    func._propagate_flag = True
     return func
 
 
@@ -440,7 +440,7 @@ def index_attr(func):
             return (func(obj, i, *args, **kwargs) for i in indices)
         else:
             return func(obj, indices, *args, **kwargs)
-    wrapper._index_hook = True
+    wrapper._index_flag = True
     return wrapper
 
 
