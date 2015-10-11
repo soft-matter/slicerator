@@ -7,6 +7,12 @@ import itertools
 from functools import wraps
 
 
+# set version string using versioneer
+from _slicerator_version import get_versions
+__version__ = get_versions()['version']
+del get_versions
+
+
 def _iter_attr(obj):
     try:
         for ns in [obj] + obj.__class__.mro():
