@@ -24,23 +24,20 @@ Example
 ```
 from slicerator import Slicerator
 
+@Slicerator.from_class
 class MyLazyLoader:
-
     def __getitem__(self, i):
-        # If a specific item is requested, load it and return it.
-        # Otherwise, return a lazy-loading Slicerator.
-        if isinstance(i, int):
-            # load thing number i
-            return thing
-        else:
-            return Slicerator(self, range(len(self)), len(self))[i]
+        # this method will be wrapped by Slicerator, so that it accepts slices,
+        # lists of integers, or boolean masks. Code below will only be executed
+        # when an integer is used.
+
+        # load thing number i
+        return thing
 
     def __len__(self):
         # do stuff
         return number_of_things
 
-    def __iter__(self):
-        return iter(self[:])
 
 # Demo:
 >>> a = MyLazyLoader()
