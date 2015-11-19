@@ -59,6 +59,7 @@ def compare_slice_to_list(actual, expected):
 
 
 v = Slicerator(list('abcdefghij'))
+n = Slicerator(list(range(10)))
 
 
 def test_bool_mask():
@@ -189,6 +190,17 @@ def test_pipeline_nesting():
 
     assert_letters_equal([nested_v[0]], ['Z'])
     assert_letters_equal([nested_v[:1][0]], ['Z'])
+
+
+def _add_one(number):
+    return number + 1
+
+
+def test_pipeline_nesting_numeric():
+    add_one = pipeline(_add_one)
+    triple_nested = add_one(add_one(add_one(n)))
+    assert_letters_equal([triple_nested[0]], [3])
+    assert_letters_equal([triple_nested[:1][0]], [3])
 
 
 def test_repr():
