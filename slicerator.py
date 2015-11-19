@@ -404,13 +404,9 @@ def pipeline(func):
     """
     @wraps(func)
     def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_flag'):
+        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator):
             def f(x):
                 return func(x, *args, **kwargs)
-            return Slicerator(obj, proc_func=f)
-        elif isinstance(obj, Slicerator):
-            def f(x):
-                return func(obj._proc_func(x), *args, **kwargs)
             return Slicerator(obj, proc_func=f)
         else:
             # Fall back on normal behavior of func, interpreting input
