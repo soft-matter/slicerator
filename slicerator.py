@@ -97,10 +97,11 @@ class Slicerator(object):
             self._propagate_attrs = propagate_attrs
         else:
             # check propagated_attrs field from the ancestor definition
+            self._propagate_attrs = []
+            if hasattr(ancestor, '_propagate_attrs'):
+                self._propagate_attrs += ancestor._propagate_attrs
             if hasattr(ancestor, 'propagate_attrs'):
-                self._propagate_attrs = ancestor.propagate_attrs
-            else:
-                self._propagate_attrs = []
+                self._propagate_attrs += ancestor.propagate_attrs
 
             # add methods having the _propagate flag
             for attr in _iter_attr(ancestor):

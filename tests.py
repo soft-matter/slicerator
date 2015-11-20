@@ -232,6 +232,20 @@ def test_getattr():
     compare_slice_to_list(list(a[::2].s), list('ACEGI'))
     compare_slice_to_list(list(a[::2][1:].s), list('CEGI'))
 
+    capitalize = pipeline(_capitalize)
+    b = capitalize(a)
+    assert_letters_equal(b, list('ABCDEFGHIJ'))
+    assert_true(hasattr(b, 'attr1'))
+    assert_false(hasattr(b, 'attr2'))
+    assert_true(hasattr(b, 's'))
+    assert_false(hasattr(b, 'close'))
+    assert_equal(b.attr1, 'hello')
+    with assert_raises(AttributeError):
+        b[:5].nonexistent_attr
+
+    compare_slice_to_list(list(b[::2].s), list('ACEGI'))
+    compare_slice_to_list(list(b[::2][1:].s), list('CEGI'))
+
 
 def test_getattr_subclass():
     @Slicerator.from_class
