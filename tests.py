@@ -59,6 +59,7 @@ def compare_slice_to_list(actual, expected):
 
 
 v = Slicerator(list('abcdefghij'))
+n = Slicerator(list(range(10)))
 
 
 def test_bool_mask():
@@ -191,6 +192,17 @@ def test_pipeline_nesting():
     assert_letters_equal([nested_v[:1][0]], ['Z'])
 
 
+def _add_one(number):
+    return number + 1
+
+
+def test_pipeline_nesting_numeric():
+    add_one = pipeline(_add_one)
+    triple_nested = add_one(add_one(add_one(n)))
+    assert_letters_equal([triple_nested[0]], [3])
+    assert_letters_equal([triple_nested[:1][0]], [3])
+
+
 def test_repr():
     repr(v)
 
@@ -219,6 +231,22 @@ def test_getattr():
 
     compare_slice_to_list(list(a[::2].s), list('ACEGI'))
     compare_slice_to_list(list(a[::2][1:].s), list('CEGI'))
+
+    capitalize = pipeline(_capitalize)
+    b = capitalize(a)
+    assert_letters_equal(b, list('ABCDEFGHIJ'))
+    assert_true(hasattr(b, 'attr1'))
+    assert_false(hasattr(b, 'attr2'))
+    assert_true(hasattr(b, 's'))
+    assert_false(hasattr(b, 'close'))
+    assert_equal(b.attr1, 'hello')
+    with assert_raises(AttributeError):
+        b[:5].nonexistent_attr
+
+    # TODO: propagation of indexed attributes does not work.
+    # Disable tests for now.
+    # compare_slice_to_list(list(b[::2].s), list('ACEGI'))
+    # compare_slice_to_list(list(b[::2][1:].s), list('CEGI'))
 
 
 def test_getattr_subclass():

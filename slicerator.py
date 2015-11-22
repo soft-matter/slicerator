@@ -97,10 +97,11 @@ class Slicerator(object):
             self._propagate_attrs = propagate_attrs
         else:
             # check propagated_attrs field from the ancestor definition
+            self._propagate_attrs = []
+            if hasattr(ancestor, '_propagate_attrs'):
+                self._propagate_attrs += ancestor._propagate_attrs
             if hasattr(ancestor, 'propagate_attrs'):
-                self._propagate_attrs = ancestor.propagate_attrs
-            else:
-                self._propagate_attrs = []
+                self._propagate_attrs += ancestor.propagate_attrs
 
             # add methods having the _propagate flag
             for attr in _iter_attr(ancestor):
@@ -404,13 +405,9 @@ def pipeline(func):
     """
     @wraps(func)
     def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_flag'):
+        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator):
             def f(x):
                 return func(x, *args, **kwargs)
-            return Slicerator(obj, proc_func=f)
-        elif isinstance(obj, Slicerator):
-            def f(x):
-                return func(obj._proc_func(x), *args, **kwargs)
             return Slicerator(obj, proc_func=f)
         else:
             # Fall back on normal behavior of func, interpreting input
