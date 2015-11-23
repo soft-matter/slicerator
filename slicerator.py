@@ -259,7 +259,7 @@ class Slicerator(object):
                     hasattr(attr, '_index_flag')):
                 return SliceableAttribute(self, attr)
             else:
-                return getattr(self._ancestor, name)
+                return attr
         raise AttributeError
 
     def __getstate__(self):
