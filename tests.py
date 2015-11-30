@@ -122,13 +122,9 @@ def test_slice_of_slice_of_slice_of_slice():
     compare_slice_to_list(slice2, list('cegi'))
     slice3 = slice2[:]
     compare_slice_to_list(slice3, list('cegi'))
-    print('define slice4')
     slice4 = slice3[:-1]
-    print('compare slice4')
     compare_slice_to_list(slice4, list('ceg'))
-    print('define slice4a')
     slice4a = slice3[::-1]
-    print('compare slice4a')
     compare_slice_to_list(slice4a, list('igec'))
 
 
@@ -229,6 +225,7 @@ def test_getattr():
     with assert_raises(AttributeError):
         a[:5].nonexistent_attr
 
+    compare_slice_to_list(list(a.s), list('ABCDEFGHIJ'))
     compare_slice_to_list(list(a[::2].s), list('ACEGI'))
     compare_slice_to_list(list(a[::2][1:].s), list('CEGI'))
 
@@ -243,10 +240,9 @@ def test_getattr():
     with assert_raises(AttributeError):
         b[:5].nonexistent_attr
 
-    # TODO: propagation of indexed attributes does not work.
-    # Disable tests for now.
-    # compare_slice_to_list(list(b[::2].s), list('ACEGI'))
-    # compare_slice_to_list(list(b[::2][1:].s), list('CEGI'))
+    compare_slice_to_list(list(b.s), list('ABCDEFGHIJ'))
+    compare_slice_to_list(list(b[::2].s), list('ACEGI'))
+    compare_slice_to_list(list(b[::2][1:].s), list('CEGI'))
 
 
 def test_getattr_subclass():

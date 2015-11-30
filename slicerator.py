@@ -255,10 +255,11 @@ class Slicerator(object):
             self._propagate_attrs = []
         if name in self._propagate_attrs:
             attr = getattr(self._ancestor, name)
-            if hasattr(attr, '_index_flag'):
-                return SliceableAttribute(self, getattr(self._ancestor, name))
+            if (isinstance(attr, SliceableAttribute) or
+                    hasattr(attr, '_index_flag')):
+                return SliceableAttribute(self, attr)
             else:
-                return getattr(self._ancestor, name)
+                return attr
         raise AttributeError
 
     def __getstate__(self):
@@ -452,7 +453,7 @@ class SliceableAttribute(object):
         self._ancestor = slicerator._ancestor
         self._len = slicerator._len
         self._get = attribute
-        self._indices = slicerator._indices
+        self._indices = slicerator.indices  # make an independent copy
 
     @property
     def indices(self):
