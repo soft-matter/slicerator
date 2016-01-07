@@ -2,10 +2,16 @@ import os
 import versioneer
 from setuptools import setup
 
+try:
+    descr = open(os.path.join(os.path.dirname(__file__), 'README.md')).read()
+except IOError:
+    descr = ''
 
-def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
-
+try:
+    from pypandoc import convert
+    descr = convert(descr, 'rst', format='md')
+except ImportError:
+    pass
 
 setup(name='slicerator',
       version=versioneer.get_version(),
@@ -27,5 +33,5 @@ setup(name='slicerator',
                    'Programming Language :: Python :: 3.4',
                    'Programming Language :: Python :: 3.5',
                    ],
-      long_description = read('README.md'),
+      long_description=descr,
       )
