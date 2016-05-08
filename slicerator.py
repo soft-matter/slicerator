@@ -5,6 +5,7 @@ from six.moves import range
 import collections
 import itertools
 from functools import wraps
+from copy import copy
 
 
 # set version string using versioneer
@@ -24,7 +25,7 @@ def _iter_attr(obj):
 
 class Slicerator(object):
     def __init__(self, ancestor, indices=None, length=None,
-                 propagate_attrs=None, proc_func=None):
+                 propagate_attrs=None):
         """A generator that supports fancy indexing
 
         When sliced using any iterable with a known length, it returns another
@@ -52,10 +53,6 @@ class Slicerator(object):
             that is, if `len(indices)` is invalid
         propagate_attrs : list of str, optional
             list of attributes to be propagated into Slicerator
-        proc_func : function
-            function that processes data returned by Slicerator. The function
-            acts element-wise and is only evaluated when data is actually
-            returned
 
         Examples
         --------
@@ -111,10 +108,6 @@ class Slicerator(object):
         self._len = length
         self._ancestor = ancestor
         self._indices = indices
-        if proc_func is None:
-            self._proc_func = lambda x: x
-        else:
-            self._proc_func = proc_func
 
     @classmethod
     def from_func(cls, func, length, propagate_attrs=None):
@@ -210,8 +203,7 @@ class Slicerator(object):
         return indices
 
     def _get(self, key):
-        "Wrap ancestor's method in a processing function."
-        return self._proc_func(self._ancestor[key])
+        return self._ancestor[key]
 
     def _map_index(self, key):
         if key < -self._len or key >= self._len:
@@ -225,7 +217,7 @@ class Slicerator(object):
         return abs_key
 
     def __repr__(self):
-        msg = "Sliced and/or processed {0}. Original repr:\n".format(
+        msg = "Sliced {0}. Original repr:\n".format(
                 type(self._ancestor).__name__)
         old = '\n'.join("    " + ln for ln in repr(self._ancestor).split('\n'))
         return msg + old
@@ -247,7 +239,7 @@ class Slicerator(object):
                 return (self[k] for k in rel_indices)
             indices = _index_generator(rel_indices, self.indices)
             return Slicerator(self._ancestor, indices, new_length,
-                              self._propagate_attrs, self._proc_func)
+                              self._propagate_attrs)
 
     def __getattr__(self, name):
         # to avoid infinite recursion, always check if public field is there
@@ -263,12 +255,12 @@ class Slicerator(object):
         raise AttributeError
 
     def __getstate__(self):
-        # When serializing, return a list of the sliced and processed data
+        # When serializing, return a list of the sliced data
         # Any exposed attrs are lost.
-        return [self._get(key) for key in self.indices]
+        return list(self)
 
     def __setstate__(self, data_as_list):
-        # When deserializing, restore the Slicerator
+        # When deserializing, restore a Slicerator instance
         return self.__init__(data_as_list)
 
 
@@ -364,6 +356,77 @@ def _index_generator(new_indices, old_indices):
                 continue
 
 
+class Pipeline(object):
+    def __init__(self, ancestor, proc_func, propagate_attrs=None):
+        """A class to support lazy function evaluation on an iterable
+
+        Parameters
+        ----------
+        ancestor : object
+        proc_func : function
+            function that processes data returned by Slicerator. The function
+            acts element-wise and is only evaluated when data is actually
+            returned
+        """
+        # when list of propagated attributes are given explicitly,
+        # take this list and ignore the class definition
+        if propagate_attrs is not None:
+            self._propagate_attrs = propagate_attrs
+        else:
+            # check propagated_attrs field from the ancestor definition
+            self._propagate_attrs = []
+            if hasattr(ancestor, '_propagate_attrs'):
+                self._propagate_attrs += ancestor._propagate_attrs
+            if hasattr(ancestor, 'propagate_attrs'):
+                self._propagate_attrs += ancestor.propagate_attrs
+
+            # add methods having the _propagate flag
+            for attr in _iter_attr(ancestor):
+                if hasattr(attr, '_propagate_flag'):
+                    self._propagate_attrs.append(attr.__name__)
+
+        self._ancestor = ancestor
+        self._proc_func = proc_func
+
+    def _get(self, key):
+        # We need to copy here: else any _proc_func that acts inplace would
+        # change the ancestor value.
+        return self._proc_func(copy(self._ancestor[key]))
+
+    def __repr__(self):
+        msg = "{0} processed through {1}. Original repr:\n".format(
+                type(self._ancestor).__name__, self._proc_func.__name__)
+        old = '\n'.join("    " + ln for ln in repr(self._ancestor).split('\n'))
+        return msg + old
+
+    def __len__(self):
+        return self._ancestor.__len__()
+
+    def __getitem__(self, i):
+        """for data access"""
+        indices, new_length = key_to_indices(i, len(self))
+        if new_length is None:
+            return self._get(indices)
+        else:
+            return Slicerator(self, indices, new_length, self._propagate_attrs)
+
+    def __getattr__(self, name):
+        # to avoid infinite recursion, always check if public field is there
+        if '_propagate_attrs' not in self.__dict__:
+            self._propagate_attrs = []
+        if name in self._propagate_attrs:
+            return getattr(self._ancestor, name)
+        raise AttributeError
+
+    def __getstate__(self):
+        # When serializing, return a list of the processed data
+        # Any exposed attrs are lost.
+        return list(self)
+
+    def __setstate__(self, data_as_list):
+        # When deserializing, restore the Pipeline
+        return self.__init__(data_as_list, lambda x: x)
+
 def pipeline(func):
     """Decorator to make function aware of Slicerator objects.
 
@@ -406,10 +469,11 @@ def pipeline(func):
     """
     @wraps(func)
     def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator):
-            def f(x):
+        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator) \
+                or isinstance(obj, Pipeline):
+            def proc_func(x):
                 return func(x, *args, **kwargs)
-            return Slicerator(obj, proc_func=f)
+            return Pipeline(obj, proc_func)
         else:
             # Fall back on normal behavior of func, interpreting input
             # as a single image.
@@ -422,6 +486,7 @@ def pipeline(func):
                        "new Slicerator of the results. When passed \n"
                        "any other objects, its behavior is "
                        "unchanged.\n\n") + process.__doc__
+    process.__name__ = func.__name__
     return process
 
 
