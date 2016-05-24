@@ -317,6 +317,10 @@ def key_to_indices(key, length):
         # allow negative indexing
         if -length < key < 0:
             return length + key, None
+        elif 0 <= key < length:
+            return key, None
+        else:
+            raise IndexError('index out of range')
 
     # in all other case, just return the key and let user deal with the type.
     return key, None
@@ -401,6 +405,9 @@ class Pipeline(object):
 
     def __len__(self):
         return self._ancestor.__len__()
+
+    def __iter__(self):
+        return (self._get(i) for i in range(len(self)))
 
     def __getitem__(self, i):
         """for data access"""
