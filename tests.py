@@ -163,6 +163,19 @@ def _a_to_z(letter):
     else:
         return letter
 
+@pipeline
+def append_zero_inplace(list_obj):
+    list_obj.append(0)
+    return list_obj
+
+
+def test_inplace_pipeline():
+    n_mutable = Slicerator([list([i]) for i in range(10)])
+    appended = append_zero_inplace(n_mutable)
+
+    assert_equal(appended[5], [5, 0])  # execute the function
+    assert_equal(n_mutable[5], [5])    # check the original
+
 
 def test_pipeline_simple():
     capitalize = pipeline(_capitalize)
