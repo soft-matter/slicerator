@@ -362,7 +362,10 @@ def _index_generator(new_indices, old_indices):
 
 class Pipeline(object):
     def __init__(self, ancestor, proc_func, propagate_attrs=None):
-        """A class to support lazy function evaluation on an iterable
+        """A class to support lazy function evaluation on an iterable.
+
+        When a ``Pipeline`` object is indexed, it returns an element of its
+        ancestor modified with a process function.
 
         Parameters
         ----------
@@ -371,6 +374,20 @@ class Pipeline(object):
             function that processes data returned by Slicerator. The function
             acts element-wise and is only evaluated when data is actually
             returned
+
+        Example
+        -------
+        Construct the pipeline object that multiplies elements by two:
+        >>> ancestor = [0, 1, 2, 3, 4]
+        >>> times_two = Pipeline(ancestor, lambda x: 2*x)
+
+        Whenever the pipeline object is indexed, it takes the correct element
+        from its ancestor, and then applies the process function.
+        >>> times_two[3]  # returns 6
+
+        See also
+        --------
+        pipeline
         """
         # when list of propagated attributes are given explicitly,
         # take this list and ignore the class definition
@@ -434,18 +451,23 @@ class Pipeline(object):
         # When deserializing, restore the Pipeline
         return self.__init__(data_as_list, lambda x: x)
 
-def pipeline(func):
-    """Decorator to make function aware of Slicerator objects.
 
-    When the function is applied to a Slicerator, it
-    returns another lazily-evaluated, Slicerator object.
+def pipeline(func):
+    """Decorator to enable lazy evaluation of a function.
+
+    When the function is applied to a Slicerator or Pipeline object, it
+    returns another lazily-evaluated, Pipeline object.
 
     When the function is applied to any other object, it falls back on its
-    normal behavhior.
+    normal behavior.
 
     Returns
     -------
-    processed_images : Slicerator
+    processed_images : Pipeline
+
+    See also
+    --------
+    Pipeline
 
     Example
     -------
@@ -455,7 +477,7 @@ def pipeline(func):
     ...      return image[channel, :, :]
     ...
 
-    Passing a Slicerator the function returns another Slicerator
+    Passing a Slicerator the function returns a Pipeline
     that "lazily" applies the function when the images come out. Different
     functions can be applied to the same underlying images, creating
     independent objects.
@@ -490,7 +512,7 @@ def pipeline(func):
         process.__doc__ = ''
     process.__doc__ = ("This function has been made lazy. When passed\n"
                        "a Slicerator, it will return a \n"
-                       "new Slicerator of the results. When passed \n"
+                       "Pipeline of the results. When passed \n"
                        "any other objects, its behavior is "
                        "unchanged.\n\n") + process.__doc__
     process.__name__ = func.__name__
