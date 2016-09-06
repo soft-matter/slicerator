@@ -511,7 +511,7 @@ def pipeline(func=None, **kwargs):
     >>> red_img = red_channel(single_img)  # normal behavior
     """
     def wrapper(f):
-        return _pipeline(f, kwargs.get("retain_doc", False))
+        return _pipeline(f, **kwargs)
 
     if func is None:
         return wrapper
@@ -519,7 +519,7 @@ def pipeline(func=None, **kwargs):
         return wrapper(func)
 
 
-def _pipeline(func, retain_doc):
+def _pipeline(func, retain_doc=False):
     """Actual `pipeline` implementation
 
     Parameters
