@@ -20,7 +20,7 @@ def _iter_attr(obj):
             for attr in ns.__dict__:
                 yield ns.__dict__[attr]
     except AttributeError:
-        raise StopIteration  # obj has no __dict__
+        return  # obj has no __dict__
 
 
 class Slicerator(object):
@@ -347,7 +347,7 @@ def _index_generator(new_indices, old_indices):
                 last_n = None
                 break
             if done:
-                raise StopIteration
+                return
             if i == n:
                 last_n = n
                 try:
