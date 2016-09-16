@@ -519,7 +519,57 @@ def pipeline(func=None, **kwargs):
         return wrapper(func)
 
 
-def _pipeline(func, retain_doc=False):
+def _pipeline(func_or_class, **kwargs):
+    try:
+        is_class = issubclass(func_or_class, Pipeline)
+    except TypeError:
+        is_class = False
+    if is_class:
+        return _pipeline_fromclass(func_or_class, **kwargs)
+    else:
+        return _pipeline_fromfunc(func_or_class, **kwargs)
+
+
+def _pipeline_fromclass(cls, retain_doc=False):
+    """Actual `pipeline` implementation
+
+    Parameters
+    ----------
+    func : class
+        Class for lazy evaluation
+    retain_doc : bool
+        If True, don't modify `func`'s doc string to say that it has been
+        made lazy
+
+    Returns
+    -------
+    Pipeline
+        Lazy function evaluation :py:class:`Pipeline` for `func`.
+    """
+    @wraps(cls)
+    def process(obj, *args, **kwargs):
+        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator) \
+                or isinstance(obj, Pipeline):
+            return cls(obj, *args, **kwargs)
+        else:
+            # Fall back on normal behavior of func, interpreting input
+            # as a single image.
+            return cls([obj], *args, **kwargs)[0]
+
+    if not retain_doc:
+        if process.__doc__ is None:
+            process.__doc__ = ''
+        process.__doc__ = ("This function has been made lazy. When passed\n"
+                           "a Slicerator, it will return a \n"
+                           "Pipeline of the results. When passed \n"
+                           "any other objects, its behavior is "
+                           "unchanged.\n\n") + process.__doc__
+    process.__name__ = cls.__name__
+    return process
+
+
+
+def _pipeline_fromfunc(func, retain_doc=False):
     """Actual `pipeline` implementation
 
     Parameters
@@ -541,6 +591,7 @@ def _pipeline(func, retain_doc=False):
                 or isinstance(obj, Pipeline):
             def proc_func(x):
                 return func(x, *args, **kwargs)
+
             return Pipeline(obj, proc_func)
         else:
             # Fall back on normal behavior of func, interpreting input
