@@ -328,7 +328,7 @@ def key_to_indices(key, length):
 
 def _index_generator(new_indices, old_indices):
     """Find locations of new_indicies in the ref. frame of the old_indices.
-    
+
     Example: (1, 3), (1, 3, 5, 10) -> (3, 10)
 
     The point of all this trouble is that this is done lazily, returning
@@ -452,7 +452,7 @@ class Pipeline(object):
         return self.__init__(data_as_list, lambda x: x)
 
 
-def pipeline(func):
+def pipeline(func=None, **kwargs):
     """Decorator to enable lazy evaluation of a function.
 
     When the function is applied to a Slicerator or Pipeline object, it
@@ -469,22 +469,35 @@ def pipeline(func):
     --------
     Pipeline
 
-    Example
-    -------
+    Examples
+    --------
     Apply the pipeline decorator to your image processing function.
+
     >>> @pipeline
     ...  def color_channel(image, channel):
     ...      return image[channel, :, :]
     ...
 
+
+    In order to preserve the original function's doc string (i. e. do not add
+    a note saying that it was made lazy), use the decorator like so:
+
+    >>> @pipeline(retain_doc=True)
+    ... def color_channel(image, channel):
+    ...     '''This doc string will not be changed'''
+    ...     return image[channel, :, :]
+
+
     Passing a Slicerator the function returns a Pipeline
     that "lazily" applies the function when the images come out. Different
     functions can be applied to the same underlying images, creating
     independent objects.
+
     >>> red_images = color_channel(images, 0)
     >>> green_images = color_channel(images, 1)
 
     Pipeline functions can also be composed.
+
     >>> @pipeline
     ... def rescale(image):
     ... return (image - image.min())/image.ptp()
@@ -493,8 +506,34 @@ def pipeline(func):
 
     The function can still be applied to ordinary images. The decorator
     only takes affect when a Slicerator object is passed.
+
     >>> single_img = images[0]
     >>> red_img = red_channel(single_img)  # normal behavior
+    """
+    def wrapper(f):
+        return _pipeline(f, **kwargs)
+
+    if func is None:
+        return wrapper
+    else:
+        return wrapper(func)
+
+
+def _pipeline(func, retain_doc=False):
+    """Actual `pipeline` implementation
+
+    Parameters
+    ----------
+    func : callable
+        Function for lazy evaluation
+    retain_doc : bool
+        If True, don't modify `func`'s doc string to say that it has been
+        made lazy
+
+    Returns
+    -------
+    Pipeline
+        Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
     @wraps(func)
     def process(obj, *args, **kwargs):
@@ -508,13 +547,14 @@ def pipeline(func):
             # as a single image.
             return func(obj, *args, **kwargs)
 
-    if process.__doc__ is None:
-        process.__doc__ = ''
-    process.__doc__ = ("This function has been made lazy. When passed\n"
-                       "a Slicerator, it will return a \n"
-                       "Pipeline of the results. When passed \n"
-                       "any other objects, its behavior is "
-                       "unchanged.\n\n") + process.__doc__
+    if not retain_doc:
+        if process.__doc__ is None:
+            process.__doc__ = ''
+        process.__doc__ = ("This function has been made lazy. When passed\n"
+                           "a Slicerator, it will return a \n"
+                           "Pipeline of the results. When passed \n"
+                           "any other objects, its behavior is "
+                           "unchanged.\n\n") + process.__doc__
     process.__name__ = func.__name__
     return process
 
