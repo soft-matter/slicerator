@@ -9,7 +9,8 @@ import nose
 from six import BytesIO
 import pickle
 from nose.tools import assert_true, assert_false, assert_equal, assert_raises
-from slicerator import Slicerator, pipeline, index_attr, propagate_attr
+from numpy.testing import assert_array_equal
+from slicerator import Slicerator, Pipeline, pipeline, index_attr, propagate_attr
 
 path, _ = os.path.split(os.path.abspath(__file__))
 path = os.path.join(path, 'data')
@@ -348,6 +349,29 @@ def test_composed_pipelines():
     composed = capitalize(a_to_z(v), 'c')
 
     assert_letters_equal(composed, 'zbCdefghij')
+
+
+def test_pipeline_class():
+    sli = Slicerator(np.empty((10, 32, 64)))
+
+    @pipeline
+    class crop(Pipeline):
+        def __init__(self, reader, bbox):
+            self.bbox = bbox
+            Pipeline.__init__(self, reader, None)
+
+        def _get(self, key):
+            bbox = self.bbox
+            return self._ancestor[key][bbox[0]:bbox[2], bbox[1]:bbox[3]]
+
+        @property
+        def frame_shape(self):
+            bbox = self.bbox
+            return (bbox[2] - bbox[0], bbox[3] - bbox[1])
+
+    cropped = crop(sli, (5, 5, 10, 20))
+    assert_array_equal(cropped[0], sli[0][5:10, 5:20])
+    assert_array_equal(cropped.frame_shape, (5, 15))
 
 
 def test_serialize():
