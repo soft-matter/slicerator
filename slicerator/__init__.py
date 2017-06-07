@@ -9,7 +9,7 @@ from copy import copy
 
 
 # set version string using versioneer
-from _slicerator_version import get_versions
+from ._version import get_versions
 __version__ = get_versions()['version']
 del get_versions
 
