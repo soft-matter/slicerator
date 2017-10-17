@@ -358,11 +358,11 @@ def test_pipeline_class():
     class crop(Pipeline):
         def __init__(self, reader, bbox):
             self.bbox = bbox
-            Pipeline.__init__(self, reader, None)
+            Pipeline.__init__(self, None, reader)
 
         def _get(self, key):
             bbox = self.bbox
-            return self._ancestor[key][bbox[0]:bbox[2], bbox[1]:bbox[3]]
+            return self._ancestors[0][key][bbox[0]:bbox[2], bbox[1]:bbox[3]]
 
         @property
         def frame_shape(self):

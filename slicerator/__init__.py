@@ -6,6 +6,7 @@ import collections
 import itertools
 from functools import wraps
 from copy import copy
+import inspect
 
 
 # set version string using versioneer
@@ -361,7 +362,8 @@ def _index_generator(new_indices, old_indices):
 
 
 class Pipeline(object):
-    def __init__(self, ancestor, proc_func, propagate_attrs=None):
+    def __init__(self, proc_func, *ancestors, propagate_attrs=None,
+                 propagate_how=0):
         """A class to support lazy function evaluation on an iterable.
 
         When a ``Pipeline`` object is indexed, it returns an element of its
@@ -389,39 +391,52 @@ class Pipeline(object):
         --------
         pipeline
         """
+        self._ancestors = ancestors
+        self._proc_func = proc_func
+        self._propagate_how = propagate_how
+
         # when list of propagated attributes are given explicitly,
         # take this list and ignore the class definition
         if propagate_attrs is not None:
-            self._propagate_attrs = propagate_attrs
+            self._propagate_attrs = set(propagate_attrs)
         else:
             # check propagated_attrs field from the ancestor definition
-            self._propagate_attrs = []
-            if hasattr(ancestor, '_propagate_attrs'):
-                self._propagate_attrs += ancestor._propagate_attrs
-            if hasattr(ancestor, 'propagate_attrs'):
-                self._propagate_attrs += ancestor.propagate_attrs
+            self._propagate_attrs = set()
+            for a in self._get_prop_ancestors():
+                if hasattr(a, '_propagate_attrs'):
+                    self._propagate_attrs.update(a._propagate_attrs)
+                if hasattr(a, 'propagate_attrs'):
+                    self._propagate_attrs.update(a.propagate_attrs)
 
-            # add methods having the _propagate flag
-            for attr in _iter_attr(ancestor):
-                if hasattr(attr, '_propagate_flag'):
-                    self._propagate_attrs.append(attr.__name__)
+                # add methods having the _propagate flag
+                for attr in _iter_attr(a):
+                    if hasattr(attr, '_propagate_flag'):
+                        self._propagate_attrs.add(attr.__name__)
 
-        self._ancestor = ancestor
-        self._proc_func = proc_func
+    def _get_prop_ancestors(self):
+        if isinstance(self._propagate_how, int):
+            return self._ancestors[self._propagate_how:self._propagate_how+1]
+        if self._propagate_how == 'first':
+            return self._ancestors
+        if self._propagate_how == 'last':
+            return self.ancestors[::-1]
+        raise ValueError("propagate_how has to be an index, 'first', or "
+                         "'last'.")
 
     def _get(self, key):
         # We need to copy here: else any _proc_func that acts inplace would
         # change the ancestor value.
-        return self._proc_func(copy(self._ancestor[key]))
+        return self._proc_func(*(copy(a[key]) for a in self._ancestors))
 
     def __repr__(self):
-        msg = "{0} processed through {1}. Original repr:\n".format(
-                type(self._ancestor).__name__, self._proc_func.__name__)
-        old = '\n'.join("    " + ln for ln in repr(self._ancestor).split('\n'))
-        return msg + old
+        anc_str = ", ".join(type(a).__name__ for a in self._ancestors)
+        msg = '({0},) processed through {1}. Original repr:\n    '.format(
+            anc_str, self._proc_func.__name__)
+        old = [repr(a).replace('\n', '\n    ') for a in self._ancestors]
+        return msg + "\n    ----\n    ".join(old)
 
     def __len__(self):
-        return self._ancestor.__len__()
+        return min(a.__len__() for a in self._ancestors)
 
     def __iter__(self):
         return (self._get(i) for i in range(len(self)))
@@ -436,11 +451,16 @@ class Pipeline(object):
 
     def __getattr__(self, name):
         # to avoid infinite recursion, always check if public field is there
-        if '_propagate_attrs' not in self.__dict__:
-            self._propagate_attrs = []
-        if name in self._propagate_attrs:
-            return getattr(self._ancestor, name)
-        raise AttributeError
+        pa = self.__dict__.get('_propagate_attrs', [])
+        if not isinstance(pa, collections.Iterable):
+            raise TypeError('_propagate_attrs is not iterable')
+        if name in pa:
+            for a in self._get_prop_ancestors():
+                try:
+                    return getattr(a, name)
+                except AttributeError:
+                    pass
+        raise AttributeError('No attribute `{}` propagated.'.format(name))
 
     def __getstate__(self):
         # When serializing, return a list of the processed data
@@ -449,7 +469,7 @@ class Pipeline(object):
 
     def __setstate__(self, data_as_list):
         # When deserializing, restore the Pipeline
-        return self.__init__(data_as_list, lambda x: x)
+        return self.__init__(lambda x: x, data_as_list)
 
 
 def pipeline(func=None, **kwargs):
@@ -530,7 +550,7 @@ def _pipeline(func_or_class, **kwargs):
         return _pipeline_fromfunc(func_or_class, **kwargs)
 
 
-def _pipeline_fromclass(cls, retain_doc=False):
+def _pipeline_fromclass(cls, retain_doc=False, argc=1):
     """Actual `pipeline` implementation
 
     Parameters
@@ -546,15 +566,23 @@ def _pipeline_fromclass(cls, retain_doc=False):
     Pipeline
         Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
+    if isinstance(argc, str):
+        # subtract 1 for `self`
+        argc = len(inspect.getfullargspec(cls).args) - 1
+
     @wraps(cls)
-    def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator) \
-                or isinstance(obj, Pipeline):
-            return cls(obj, *args, **kwargs)
+    def process(*args, **kwargs):
+        ancestors = args[:argc]
+        args = args[argc:]
+        all_pipe = all(hasattr(a, '_slicerator_flag') or
+                       isinstance(a, Slicerator) or
+                       isinstance(a, Pipeline) for a in ancestors)
+        if all_pipe:
+            return cls(*ancestors, *args, **kwargs)
         else:
             # Fall back on normal behavior of func, interpreting input
             # as a single image.
-            return cls([obj], *args, **kwargs)[0]
+            return cls(*([a] for a in ancestors), *args, **kwargs)[0]
 
     if not retain_doc:
         if process.__doc__ is None:
@@ -568,8 +596,7 @@ def _pipeline_fromclass(cls, retain_doc=False):
     return process
 
 
-
-def _pipeline_fromfunc(func, retain_doc=False):
+def _pipeline_fromfunc(func, retain_doc=False, argc=1):
     """Actual `pipeline` implementation
 
     Parameters
@@ -585,18 +612,25 @@ def _pipeline_fromfunc(func, retain_doc=False):
     Pipeline
         Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
-    @wraps(func)
-    def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator) \
-                or isinstance(obj, Pipeline):
-            def proc_func(x):
-                return func(x, *args, **kwargs)
+    if isinstance(argc, str):
+        argc = len(inspect.getfullargspec(func).args)
 
-            return Pipeline(obj, proc_func)
+    @wraps(func)
+    def process(*args, **kwargs):
+        ancestors = args[:argc]
+        args = args[argc:]
+        all_pipe = all(hasattr(a, '_slicerator_flag') or
+                       isinstance(a, Slicerator) or
+                       isinstance(a, Pipeline) for a in ancestors)
+        if all_pipe:
+            def proc_func(*x):
+                return func(*x, *args, **kwargs)
+
+            return Pipeline(proc_func, *ancestors)
         else:
             # Fall back on normal behavior of func, interpreting input
             # as a single image.
-            return func(obj, *args, **kwargs)
+            return func(*args, **kwargs)
 
     if not retain_doc:
         if process.__doc__ is None:
