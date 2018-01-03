@@ -362,8 +362,7 @@ def _index_generator(new_indices, old_indices):
 
 
 class Pipeline(object):
-    def __init__(self, proc_func, *ancestors, propagate_attrs=None,
-                 propagate_how=0):
+    def __init__(self, proc_func, *ancestors, **kwargs):
         """A class to support lazy function evaluation on an iterable.
 
         When a ``Pipeline`` object is indexed, it returns an element of its
@@ -391,6 +390,15 @@ class Pipeline(object):
         --------
         pipeline
         """
+        # Python 2 does not allow default arguments in combination with
+        # variable arguments; work around that
+        propagate_attrs = kwargs.pop('propagate_attrs', None)
+        propagate_how = kwargs.pop('propagate_how', 0)
+        if kwargs:
+            # There are some left. This is an error.
+            raise TypeError("Unexpected keyword argument '{}'.".format(
+                next(iter(kwargs))))
+
         self._ancestors = ancestors
         self._proc_func = proc_func
         self._propagate_how = propagate_how
