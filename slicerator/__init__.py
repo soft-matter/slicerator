@@ -578,11 +578,11 @@ def _pipeline_fromclass(cls, retain_doc=False, argc=1):
                        isinstance(a, Slicerator) or
                        isinstance(a, Pipeline) for a in ancestors)
         if all_pipe:
-            return cls(*ancestors, *args, **kwargs)
+            return cls(*(ancestors + args), **kwargs)
         else:
             # Fall back on normal behavior of func, interpreting input
             # as a single image.
-            return cls(*([a] for a in ancestors), *args, **kwargs)[0]
+            return cls(*(tuple([a] for a in ancestors) + args), **kwargs)[0]
 
     if not retain_doc:
         if process.__doc__ is None:
@@ -624,7 +624,7 @@ def _pipeline_fromfunc(func, retain_doc=False, argc=1):
                        isinstance(a, Pipeline) for a in ancestors)
         if all_pipe:
             def proc_func(*x):
-                return func(*x, *args, **kwargs)
+                return func(*(x + args), **kwargs)
 
             return Pipeline(proc_func, *ancestors)
         else:
