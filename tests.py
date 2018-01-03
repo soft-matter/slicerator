@@ -472,6 +472,58 @@ def test_lazy_hasattr():
 
     DummySli = Slicerator.from_class(Dummy)
 
+
+def test_pipeline_multi_input():
+    @pipeline(argc=2)
+    def sum_offset(p1, p2, o):
+        return p1 + p2 + o
+
+    p1 = Slicerator(list(range(10)))
+    p2 = Slicerator(list(range(10, 20)))
+    o = 100
+
+    res = sum_offset(p1, p2, o)
+    assert(isinstance(res, Pipeline))
+    assert_array_equal(res, list(range(110, 129, 2)))
+
+    resi = sum_offset(1, 2, 3)
+    assert(isinstance(resi, int))
+    assert(resi == 6)
+
+
+def test_pipeline_propagate_attrs():
+    a1 = Slicerator(list(range(10)))
+    a1.attr1 = 10
+    a2 = Slicerator(list(range(20)))
+    a2.attr1 = 20
+    a2.attr2 = 30
+
+    p1 = Pipeline(lambda x, y: x + y, a1, a2,
+                  propagate_attrs={"attr1", "attr2"}, propagate_how=0)
+    assert(p1.attr1 == 10)
+    try:
+        p1.attr2
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("attr2 should not exist")
+
+    p2 = Pipeline(lambda x, y: x + y, a1, a2,
+                  propagate_attrs={"attr1", "attr2"}, propagate_how=1)
+    assert(p2.attr1 == 20)
+    assert(p2.attr2 == 30)
+
+    p3 = Pipeline(lambda x, y: x + y, a1, a2,
+                  propagate_attrs={"attr1", "attr2"}, propagate_how="first")
+    assert(p3.attr1 == 10)
+    assert(p3.attr2 == 30)
+
+    p4 = Pipeline(lambda x, y: x + y, a1, a2,
+                  propagate_attrs={"attr1", "attr2"}, propagate_how="last")
+    assert(p4.attr1 == 20)
+    assert(p4.attr2 == 30)
+
+
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
                    exit=False)
