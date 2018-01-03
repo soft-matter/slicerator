@@ -370,17 +370,29 @@ class Pipeline(object):
 
         Parameters
         ----------
-        ancestor : object
         proc_func : function
             function that processes data returned by Slicerator. The function
             acts element-wise and is only evaluated when data is actually
             returned
+        *ancestors : objects
+            Object to be processed.
+        propagate_attrs : set of str or None, optional
+            Names of attributes to be propagated through the pipeline. If this
+            is `None`, go through ancestors and look at `_propagate_attrs`
+            and `propagate_attrs` attributes and search for attributes having
+            a `_propagate_flag` attribute. Defaults to `None`.
+        propagate_how : {'first', 'last'} or int, optional
+            Where to look for attributes to propagate. If this is an integer,
+            it specifies the index of the ancestor (in `ancestors`). If it is
+            'first', go through all ancestors starting with the first one until
+            one is found that has the attribute. If it is 'last', go through
+            the ancestors in reverse order. Defaults to 0.
 
         Example
         -------
         Construct the pipeline object that multiplies elements by two:
         >>> ancestor = [0, 1, 2, 3, 4]
-        >>> times_two = Pipeline(ancestor, lambda x: 2*x)
+        >>> times_two = Pipeline(lambda x: 2*x, ancestor)
 
         Whenever the pipeline object is indexed, it takes the correct element
         from its ancestor, and then applies the process function.
@@ -422,6 +434,13 @@ class Pipeline(object):
                         self._propagate_attrs.add(attr.__name__)
 
     def _get_prop_ancestors(self):
+        """Get relevant ancestor(s) for attribute propagation
+
+        Returns
+        -------
+        list
+            List of ancestors.
+        """
         if isinstance(self._propagate_how, int):
             return self._ancestors[self._propagate_how:self._propagate_how+1]
         if self._propagate_how == 'first':
@@ -489,9 +508,24 @@ def pipeline(func=None, **kwargs):
     When the function is applied to any other object, it falls back on its
     normal behavior.
 
+    Parameters
+    ----------
+    func : callable or type
+        Function or class type for lazy evaluation
+    retain_doc : bool, optional
+        If True, don't modify `func`'s doc string to say that it has been
+        made lazy. Defaults to False
+    argc : int or 'all', optional
+        Number of arguments that are relevant for the pipeline. For instance,
+        a function taking three parameters that adds up the elements of
+        two :py:class:`Slicerators` and a constant offset would have
+        ``argc=2``. If 'all', all the function's arguments are used for the
+        pipeline. Defaults to 1.
+
     Returns
     -------
-    processed_images : Pipeline
+    Pipeline
+        Lazy function evaluation :py:class:`Pipeline` for `func`.
 
     See also
     --------
@@ -537,6 +571,13 @@ def pipeline(func=None, **kwargs):
 
     >>> single_img = images[0]
     >>> red_img = red_channel(single_img)  # normal behavior
+
+
+    Pipeline functions can take more than one slicerator.
+
+    >>> @pipeline(argc=2)
+    ...  def sum_offset(img1, img2, offset):
+    ...      return img1 + img2 + offset
     """
     def wrapper(f):
         return _pipeline(f, **kwargs)
@@ -568,6 +609,8 @@ def _pipeline_fromclass(cls, retain_doc=False, argc=1):
     retain_doc : bool
         If True, don't modify `func`'s doc string to say that it has been
         made lazy
+    argc : int or 'all', optional
+        Number of arguments that are relevant for the pipeline. Defaults to 1.
 
     Returns
     -------
@@ -614,6 +657,8 @@ def _pipeline_fromfunc(func, retain_doc=False, argc=1):
     retain_doc : bool
         If True, don't modify `func`'s doc string to say that it has been
         made lazy
+    argc : int or 'all', optional
+        Number of arguments that are relevant for the pipeline. Defaults to 1.
 
     Returns
     -------
