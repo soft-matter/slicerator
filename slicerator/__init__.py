@@ -446,7 +446,7 @@ class Pipeline(object):
         if self._propagate_how == 'first':
             return self._ancestors
         if self._propagate_how == 'last':
-            return self.ancestors[::-1]
+            return self._ancestors[::-1]
         raise ValueError("propagate_how has to be an index, 'first', or "
                          "'last'.")
 
