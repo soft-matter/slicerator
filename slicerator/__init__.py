@@ -683,7 +683,7 @@ def _pipeline_fromfunc(func, retain_doc=False, argc=1):
         else:
             # Fall back on normal behavior of func, interpreting input
             # as a single image.
-            return func(*args, **kwargs)
+            return func(*(ancestors + args), **kwargs)
 
     if not retain_doc:
         if process.__doc__ is None:
