@@ -523,6 +523,26 @@ def test_pipeline_propagate_attrs():
     assert(p4.attr1 == 20)
     assert(p4.attr2 == 30)
 
+    a1.attr3 = 40
+    a1.attr4 = 50
+    a1._propagate_attrs = {"attr3"}
+    a1.propagate_attrs = {"attr4"}
+    p5 = Pipeline(lambda x, y: x + y, a1, a2, propagate_how="first")
+    assert(p5.attr3 == 40)
+    assert(p5.attr4 == 50)
+    try:
+        p5.attr1
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("attr1 should not exist")
+    try:
+        p5.attr2
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("attr2 should not exist")
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
