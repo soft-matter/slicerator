@@ -405,7 +405,7 @@ class Pipeline(object):
         # Python 2 does not allow default arguments in combination with
         # variable arguments; work around that
         propagate_attrs = kwargs.pop('propagate_attrs', None)
-        propagate_how = kwargs.pop('propagate_how', 0)
+        propagate_how = kwargs.pop('propagate_how', 'first')
         if kwargs:
             # There are some left. This is an error.
             raise TypeError("Unexpected keyword argument '{}'.".format(
