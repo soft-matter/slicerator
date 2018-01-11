@@ -515,12 +515,12 @@ def pipeline(func=None, **kwargs):
     retain_doc : bool, optional
         If True, don't modify `func`'s doc string to say that it has been
         made lazy. Defaults to False
-    argc : int or 'all', optional
-        Number of arguments that are relevant for the pipeline. For instance,
+    ancestor_count : int or 'all', optional
+        Number of inputs to the pipeline. For instance,
         a function taking three parameters that adds up the elements of
         two :py:class:`Slicerators` and a constant offset would have
-        ``argc=2``. If 'all', all the function's arguments are used for the
-        pipeline. Defaults to 1.
+        ``ancestor_count=2``. If 'all', all the function's arguments are used
+        for the pipeline. Defaults to 1.
 
     Returns
     -------
@@ -575,7 +575,7 @@ def pipeline(func=None, **kwargs):
 
     Pipeline functions can take more than one slicerator.
 
-    >>> @pipeline(argc=2)
+    >>> @pipeline(ancestor_count=2)
     ...  def sum_offset(img1, img2, offset):
     ...      return img1 + img2 + offset
     """
@@ -599,7 +599,7 @@ def _pipeline(func_or_class, **kwargs):
         return _pipeline_fromfunc(func_or_class, **kwargs)
 
 
-def _pipeline_fromclass(cls, retain_doc=False, argc=1):
+def _pipeline_fromclass(cls, retain_doc=False, ancestor_count=1):
     """Actual `pipeline` implementation
 
     Parameters
@@ -609,22 +609,22 @@ def _pipeline_fromclass(cls, retain_doc=False, argc=1):
     retain_doc : bool
         If True, don't modify `func`'s doc string to say that it has been
         made lazy
-    argc : int or 'all', optional
-        Number of arguments that are relevant for the pipeline. Defaults to 1.
+    ancestor_count : int or 'all', optional
+        Number of inputs to the pipeline. Defaults to 1.
 
     Returns
     -------
     Pipeline
         Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
-    if isinstance(argc, str):
+    if isinstance(ancestor_count, str):
         # subtract 1 for `self`
-        argc = len(inspect.getfullargspec(cls).args) - 1
+        ancestor_count = len(inspect.getfullargspec(cls).args) - 1
 
     @wraps(cls)
     def process(*args, **kwargs):
-        ancestors = args[:argc]
-        args = args[argc:]
+        ancestors = args[:ancestor_count]
+        args = args[ancestor_count:]
         all_pipe = all(hasattr(a, '_slicerator_flag') or
                        isinstance(a, Slicerator) or
                        isinstance(a, Pipeline) for a in ancestors)
@@ -647,7 +647,7 @@ def _pipeline_fromclass(cls, retain_doc=False, argc=1):
     return process
 
 
-def _pipeline_fromfunc(func, retain_doc=False, argc=1):
+def _pipeline_fromfunc(func, retain_doc=False, ancestor_count=1):
     """Actual `pipeline` implementation
 
     Parameters
@@ -657,21 +657,21 @@ def _pipeline_fromfunc(func, retain_doc=False, argc=1):
     retain_doc : bool
         If True, don't modify `func`'s doc string to say that it has been
         made lazy
-    argc : int or 'all', optional
-        Number of arguments that are relevant for the pipeline. Defaults to 1.
+    ancestor_count : int or 'all', optional
+        Number of inputs to the pipeline. Defaults to 1.
 
     Returns
     -------
     Pipeline
         Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
-    if isinstance(argc, str):
-        argc = len(inspect.getfullargspec(func).args)
+    if isinstance(ancestor_count, str):
+        ancestor_count = len(inspect.getfullargspec(func).args)
 
     @wraps(func)
     def process(*args, **kwargs):
-        ancestors = args[:argc]
-        args = args[argc:]
+        ancestors = args[:ancestor_count]
+        args = args[ancestor_count:]
         all_pipe = all(hasattr(a, '_slicerator_flag') or
                        isinstance(a, Slicerator) or
                        isinstance(a, Pipeline) for a in ancestors)

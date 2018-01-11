@@ -474,7 +474,7 @@ def test_lazy_hasattr():
 
 
 def test_pipeline_multi_input():
-    @pipeline(argc=2)
+    @pipeline(ancestor_count=2)
     def sum_offset(p1, p2, o):
         return p1 + p2 + o
 
