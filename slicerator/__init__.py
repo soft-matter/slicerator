@@ -617,7 +617,7 @@ def _pipeline_fromclass(cls, retain_doc=False, ancestor_count=1):
     Pipeline
         Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
-    if isinstance(ancestor_count, str):
+    if ancestor_count == 'all':
         # subtract 1 for `self`
         ancestor_count = len(inspect.getfullargspec(cls).args) - 1
 
@@ -665,7 +665,7 @@ def _pipeline_fromfunc(func, retain_doc=False, ancestor_count=1):
     Pipeline
         Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
-    if isinstance(ancestor_count, str):
+    if ancestor_count == 'all':
         ancestor_count = len(inspect.getfullargspec(func).args)
 
     @wraps(func)
