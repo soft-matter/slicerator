@@ -386,7 +386,7 @@ class Pipeline(object):
             it specifies the index of the ancestor (in `ancestors`). If it is
             'first', go through all ancestors starting with the first one until
             one is found that has the attribute. If it is 'last', go through
-            the ancestors in reverse order. Defaults to 0.
+            the ancestors in reverse order. Defaults to 'first'.
 
         Example
         -------
