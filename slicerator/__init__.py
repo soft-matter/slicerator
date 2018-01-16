@@ -411,6 +411,11 @@ class Pipeline(object):
             raise TypeError("Unexpected keyword argument '{}'.".format(
                 next(iter(kwargs))))
 
+        # Only accept ancestors of the same length are accepted
+        self._len = len(ancestors[0])
+        if not all(len(a) == self._len for a in ancestors):
+            raise ValueError('Ancestors have to be of same length.')
+
         self._ancestors = ancestors
         self._proc_func = proc_func
         self._propagate_how = propagate_how
@@ -463,7 +468,7 @@ class Pipeline(object):
         return msg + "\n    ----\n    ".join(old)
 
     def __len__(self):
-        return min(a.__len__() for a in self._ancestors)
+        return self._len
 
     def __iter__(self):
         return (self._get(i) for i in range(len(self)))

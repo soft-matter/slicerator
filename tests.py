@@ -485,16 +485,26 @@ def test_pipeline_multi_input():
     res = sum_offset(p1, p2, o)
     assert(isinstance(res, Pipeline))
     assert_array_equal(res, list(range(110, 129, 2)))
+    assert(len(res) == len(p1))
 
     resi = sum_offset(1, 2, 3)
     assert(isinstance(resi, int))
     assert(resi == 6)
 
+    p3 = Slicerator(list(range(20)))
+    try:
+        sum_offset(p1, p3)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Should be unable to create pipeline with "
+                             "ancestors having different lengths.")
+
 
 def test_pipeline_propagate_attrs():
     a1 = Slicerator(list(range(10)))
     a1.attr1 = 10
-    a2 = Slicerator(list(range(20)))
+    a2 = Slicerator(list(range(10, 20)))
     a2.attr1 = 20
     a2.attr2 = 30
 
