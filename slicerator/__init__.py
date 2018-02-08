@@ -6,6 +6,7 @@ import collections
 import itertools
 from functools import wraps
 from copy import copy
+import inspect
 
 
 # set version string using versioneer
@@ -361,7 +362,7 @@ def _index_generator(new_indices, old_indices):
 
 
 class Pipeline(object):
-    def __init__(self, ancestor, proc_func, propagate_attrs=None):
+    def __init__(self, proc_func, *ancestors, **kwargs):
         """A class to support lazy function evaluation on an iterable.
 
         When a ``Pipeline`` object is indexed, it returns an element of its
@@ -369,17 +370,29 @@ class Pipeline(object):
 
         Parameters
         ----------
-        ancestor : object
         proc_func : function
             function that processes data returned by Slicerator. The function
             acts element-wise and is only evaluated when data is actually
             returned
+        *ancestors : objects
+            Object to be processed.
+        propagate_attrs : set of str or None, optional
+            Names of attributes to be propagated through the pipeline. If this
+            is `None`, go through ancestors and look at `_propagate_attrs`
+            and `propagate_attrs` attributes and search for attributes having
+            a `_propagate_flag` attribute. Defaults to `None`.
+        propagate_how : {'first', 'last'} or int, optional
+            Where to look for attributes to propagate. If this is an integer,
+            it specifies the index of the ancestor (in `ancestors`). If it is
+            'first', go through all ancestors starting with the first one until
+            one is found that has the attribute. If it is 'last', go through
+            the ancestors in reverse order. Defaults to 'first'.
 
         Example
         -------
         Construct the pipeline object that multiplies elements by two:
         >>> ancestor = [0, 1, 2, 3, 4]
-        >>> times_two = Pipeline(ancestor, lambda x: 2*x)
+        >>> times_two = Pipeline(lambda x: 2*x, ancestor)
 
         Whenever the pipeline object is indexed, it takes the correct element
         from its ancestor, and then applies the process function.
@@ -389,39 +402,73 @@ class Pipeline(object):
         --------
         pipeline
         """
+        # Python 2 does not allow default arguments in combination with
+        # variable arguments; work around that
+        propagate_attrs = kwargs.pop('propagate_attrs', None)
+        propagate_how = kwargs.pop('propagate_how', 'first')
+        if kwargs:
+            # There are some left. This is an error.
+            raise TypeError("Unexpected keyword argument '{}'.".format(
+                next(iter(kwargs))))
+
+        # Only accept ancestors of the same length are accepted
+        self._len = len(ancestors[0])
+        if not all(len(a) == self._len for a in ancestors):
+            raise ValueError('Ancestors have to be of same length.')
+
+        self._ancestors = ancestors
+        self._proc_func = proc_func
+        self._propagate_how = propagate_how
+
         # when list of propagated attributes are given explicitly,
         # take this list and ignore the class definition
         if propagate_attrs is not None:
-            self._propagate_attrs = propagate_attrs
+            self._propagate_attrs = set(propagate_attrs)
         else:
             # check propagated_attrs field from the ancestor definition
-            self._propagate_attrs = []
-            if hasattr(ancestor, '_propagate_attrs'):
-                self._propagate_attrs += ancestor._propagate_attrs
-            if hasattr(ancestor, 'propagate_attrs'):
-                self._propagate_attrs += ancestor.propagate_attrs
+            self._propagate_attrs = set()
+            for a in self._get_prop_ancestors():
+                if hasattr(a, '_propagate_attrs'):
+                    self._propagate_attrs.update(a._propagate_attrs)
+                if hasattr(a, 'propagate_attrs'):
+                    self._propagate_attrs.update(a.propagate_attrs)
 
-            # add methods having the _propagate flag
-            for attr in _iter_attr(ancestor):
-                if hasattr(attr, '_propagate_flag'):
-                    self._propagate_attrs.append(attr.__name__)
+                # add methods having the _propagate flag
+                for attr in _iter_attr(a):
+                    if hasattr(attr, '_propagate_flag'):
+                        self._propagate_attrs.add(attr.__name__)
 
-        self._ancestor = ancestor
-        self._proc_func = proc_func
+    def _get_prop_ancestors(self):
+        """Get relevant ancestor(s) for attribute propagation
+
+        Returns
+        -------
+        list
+            List of ancestors.
+        """
+        if isinstance(self._propagate_how, int):
+            return self._ancestors[self._propagate_how:self._propagate_how+1]
+        if self._propagate_how == 'first':
+            return self._ancestors
+        if self._propagate_how == 'last':
+            return self._ancestors[::-1]
+        raise ValueError("propagate_how has to be an index, 'first', or "
+                         "'last'.")
 
     def _get(self, key):
         # We need to copy here: else any _proc_func that acts inplace would
         # change the ancestor value.
-        return self._proc_func(copy(self._ancestor[key]))
+        return self._proc_func(*(copy(a[key]) for a in self._ancestors))
 
     def __repr__(self):
-        msg = "{0} processed through {1}. Original repr:\n".format(
-                type(self._ancestor).__name__, self._proc_func.__name__)
-        old = '\n'.join("    " + ln for ln in repr(self._ancestor).split('\n'))
-        return msg + old
+        anc_str = ", ".join(type(a).__name__ for a in self._ancestors)
+        msg = '({0},) processed through {1}. Original repr:\n    '.format(
+            anc_str, self._proc_func.__name__)
+        old = [repr(a).replace('\n', '\n    ') for a in self._ancestors]
+        return msg + "\n    ----\n    ".join(old)
 
     def __len__(self):
-        return self._ancestor.__len__()
+        return self._len
 
     def __iter__(self):
         return (self._get(i) for i in range(len(self)))
@@ -436,11 +483,16 @@ class Pipeline(object):
 
     def __getattr__(self, name):
         # to avoid infinite recursion, always check if public field is there
-        if '_propagate_attrs' not in self.__dict__:
-            self._propagate_attrs = []
-        if name in self._propagate_attrs:
-            return getattr(self._ancestor, name)
-        raise AttributeError
+        pa = self.__dict__.get('_propagate_attrs', [])
+        if not isinstance(pa, collections.Iterable):
+            raise TypeError('_propagate_attrs is not iterable')
+        if name in pa:
+            for a in self._get_prop_ancestors():
+                try:
+                    return getattr(a, name)
+                except AttributeError:
+                    pass
+        raise AttributeError('No attribute `{}` propagated.'.format(name))
 
     def __getstate__(self):
         # When serializing, return a list of the processed data
@@ -449,7 +501,7 @@ class Pipeline(object):
 
     def __setstate__(self, data_as_list):
         # When deserializing, restore the Pipeline
-        return self.__init__(data_as_list, lambda x: x)
+        return self.__init__(lambda x: x, data_as_list)
 
 
 def pipeline(func=None, **kwargs):
@@ -461,9 +513,24 @@ def pipeline(func=None, **kwargs):
     When the function is applied to any other object, it falls back on its
     normal behavior.
 
+    Parameters
+    ----------
+    func : callable or type
+        Function or class type for lazy evaluation
+    retain_doc : bool, optional
+        If True, don't modify `func`'s doc string to say that it has been
+        made lazy. Defaults to False
+    ancestor_count : int or 'all', optional
+        Number of inputs to the pipeline. For instance,
+        a function taking three parameters that adds up the elements of
+        two :py:class:`Slicerators` and a constant offset would have
+        ``ancestor_count=2``. If 'all', all the function's arguments are used
+        for the pipeline. Defaults to 1.
+
     Returns
     -------
-    processed_images : Pipeline
+    Pipeline
+        Lazy function evaluation :py:class:`Pipeline` for `func`.
 
     See also
     --------
@@ -509,6 +576,13 @@ def pipeline(func=None, **kwargs):
 
     >>> single_img = images[0]
     >>> red_img = red_channel(single_img)  # normal behavior
+
+
+    Pipeline functions can take more than one slicerator.
+
+    >>> @pipeline(ancestor_count=2)
+    ...  def sum_offset(img1, img2, offset):
+    ...      return img1 + img2 + offset
     """
     def wrapper(f):
         return _pipeline(f, **kwargs)
@@ -530,7 +604,7 @@ def _pipeline(func_or_class, **kwargs):
         return _pipeline_fromfunc(func_or_class, **kwargs)
 
 
-def _pipeline_fromclass(cls, retain_doc=False):
+def _pipeline_fromclass(cls, retain_doc=False, ancestor_count=1):
     """Actual `pipeline` implementation
 
     Parameters
@@ -540,21 +614,31 @@ def _pipeline_fromclass(cls, retain_doc=False):
     retain_doc : bool
         If True, don't modify `func`'s doc string to say that it has been
         made lazy
+    ancestor_count : int or 'all', optional
+        Number of inputs to the pipeline. Defaults to 1.
 
     Returns
     -------
     Pipeline
         Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
+    if ancestor_count == 'all':
+        # subtract 1 for `self`
+        ancestor_count = len(inspect.getfullargspec(cls).args) - 1
+
     @wraps(cls)
-    def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator) \
-                or isinstance(obj, Pipeline):
-            return cls(obj, *args, **kwargs)
+    def process(*args, **kwargs):
+        ancestors = args[:ancestor_count]
+        args = args[ancestor_count:]
+        all_pipe = all(hasattr(a, '_slicerator_flag') or
+                       isinstance(a, Slicerator) or
+                       isinstance(a, Pipeline) for a in ancestors)
+        if all_pipe:
+            return cls(*(ancestors + args), **kwargs)
         else:
             # Fall back on normal behavior of func, interpreting input
             # as a single image.
-            return cls([obj], *args, **kwargs)[0]
+            return cls(*(tuple([a] for a in ancestors) + args), **kwargs)[0]
 
     if not retain_doc:
         if process.__doc__ is None:
@@ -568,8 +652,7 @@ def _pipeline_fromclass(cls, retain_doc=False):
     return process
 
 
-
-def _pipeline_fromfunc(func, retain_doc=False):
+def _pipeline_fromfunc(func, retain_doc=False, ancestor_count=1):
     """Actual `pipeline` implementation
 
     Parameters
@@ -579,24 +662,33 @@ def _pipeline_fromfunc(func, retain_doc=False):
     retain_doc : bool
         If True, don't modify `func`'s doc string to say that it has been
         made lazy
+    ancestor_count : int or 'all', optional
+        Number of inputs to the pipeline. Defaults to 1.
 
     Returns
     -------
     Pipeline
         Lazy function evaluation :py:class:`Pipeline` for `func`.
     """
-    @wraps(func)
-    def process(obj, *args, **kwargs):
-        if hasattr(obj, '_slicerator_flag') or isinstance(obj, Slicerator) \
-                or isinstance(obj, Pipeline):
-            def proc_func(x):
-                return func(x, *args, **kwargs)
+    if ancestor_count == 'all':
+        ancestor_count = len(inspect.getfullargspec(func).args)
 
-            return Pipeline(obj, proc_func)
+    @wraps(func)
+    def process(*args, **kwargs):
+        ancestors = args[:ancestor_count]
+        args = args[ancestor_count:]
+        all_pipe = all(hasattr(a, '_slicerator_flag') or
+                       isinstance(a, Slicerator) or
+                       isinstance(a, Pipeline) for a in ancestors)
+        if all_pipe:
+            def proc_func(*x):
+                return func(*(x + args), **kwargs)
+
+            return Pipeline(proc_func, *ancestors)
         else:
             # Fall back on normal behavior of func, interpreting input
             # as a single image.
-            return func(obj, *args, **kwargs)
+            return func(*(ancestors + args), **kwargs)
 
     if not retain_doc:
         if process.__doc__ is None:

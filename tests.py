@@ -358,11 +358,11 @@ def test_pipeline_class():
     class crop(Pipeline):
         def __init__(self, reader, bbox):
             self.bbox = bbox
-            Pipeline.__init__(self, reader, None)
+            Pipeline.__init__(self, None, reader)
 
         def _get(self, key):
             bbox = self.bbox
-            return self._ancestor[key][bbox[0]:bbox[2], bbox[1]:bbox[3]]
+            return self._ancestors[0][key][bbox[0]:bbox[2], bbox[1]:bbox[3]]
 
         @property
         def frame_shape(self):
@@ -471,6 +471,88 @@ def test_lazy_hasattr():
             raise RuntimeError()
 
     DummySli = Slicerator.from_class(Dummy)
+
+
+def test_pipeline_multi_input():
+    @pipeline(ancestor_count=2)
+    def sum_offset(p1, p2, o):
+        return p1 + p2 + o
+
+    p1 = Slicerator(list(range(10)))
+    p2 = Slicerator(list(range(10, 20)))
+    o = 100
+
+    res = sum_offset(p1, p2, o)
+    assert(isinstance(res, Pipeline))
+    assert_array_equal(res, list(range(110, 129, 2)))
+    assert(len(res) == len(p1))
+
+    resi = sum_offset(1, 2, 3)
+    assert(isinstance(resi, int))
+    assert(resi == 6)
+
+    p3 = Slicerator(list(range(20)))
+    try:
+        sum_offset(p1, p3)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Should be unable to create pipeline with "
+                             "ancestors having different lengths.")
+
+
+def test_pipeline_propagate_attrs():
+    a1 = Slicerator(list(range(10)))
+    a1.attr1 = 10
+    a2 = Slicerator(list(range(10, 20)))
+    a2.attr1 = 20
+    a2.attr2 = 30
+
+    p1 = Pipeline(lambda x, y: x + y, a1, a2,
+                  propagate_attrs={"attr1", "attr2"}, propagate_how=0)
+    assert(p1.attr1 == 10)
+    try:
+        p1.attr2
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("attr2 should not exist")
+
+    p2 = Pipeline(lambda x, y: x + y, a1, a2,
+                  propagate_attrs={"attr1", "attr2"}, propagate_how=1)
+    assert(p2.attr1 == 20)
+    assert(p2.attr2 == 30)
+
+    p3 = Pipeline(lambda x, y: x + y, a1, a2,
+                  propagate_attrs={"attr1", "attr2"}, propagate_how="first")
+    assert(p3.attr1 == 10)
+    assert(p3.attr2 == 30)
+
+    p4 = Pipeline(lambda x, y: x + y, a1, a2,
+                  propagate_attrs={"attr1", "attr2"}, propagate_how="last")
+    assert(p4.attr1 == 20)
+    assert(p4.attr2 == 30)
+
+    a1.attr3 = 40
+    a1.attr4 = 50
+    a1._propagate_attrs = {"attr3"}
+    a1.propagate_attrs = {"attr4"}
+    p5 = Pipeline(lambda x, y: x + y, a1, a2, propagate_how="first")
+    assert(p5.attr3 == 40)
+    assert(p5.attr4 == 50)
+    try:
+        p5.attr1
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("attr1 should not exist")
+    try:
+        p5.attr2
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("attr2 should not exist")
+
 
 if __name__ == '__main__':
     nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
