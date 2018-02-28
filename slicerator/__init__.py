@@ -76,12 +76,12 @@ class Slicerator(object):
         if indices is None and length is None:
             try:
                 length = len(ancestor)
-                indices = range(length)
+                indices = list(range(length))
             except TypeError:
                 raise ValueError("The length parameter is required in this "
                                  "case because len(ancestor) is not valid.")
         elif indices is None:
-            indices = range(length)
+            indices = list(range(length))
         elif length is None:
             try:
                 length = len(indices)
