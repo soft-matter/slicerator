@@ -21,7 +21,7 @@ or
 Example
 -------
 
-```
+```python
 from slicerator import Slicerator
 
 @Slicerator.from_class
