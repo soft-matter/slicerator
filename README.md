@@ -5,7 +5,9 @@ a lazy-loading, fancy-slicable iterable
 
 Think of it like a generator that is "reusable" and has a length.
 
-[![build status](https://travis-ci.org/soft-matter/slicerator.png?branch=master)](https://travis-ci.org/soft-matter/slicerator)
+[Please see the documentation](http://slicerator.readthedocs.io/en/latest/) for examples and an API reference.
+
+[![build status](https://travis-ci.org/soft-matter/slicerator.png?branch=master)](https://travis-ci.org/soft-matter/slicerator) [![Documentation Status](https://readthedocs.org/projects/slicerator/badge/?version=latest)](http://slicerator.readthedocs.io/en/latest/?badge=latest)
 
 Installation
 ------------
