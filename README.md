@@ -18,7 +18,7 @@ On any platform, use pip or conda.
 
 or
 
-`conda install -c soft-matter slicerator`
+`conda install -c conda-forge slicerator`
 
 Example
 -------
