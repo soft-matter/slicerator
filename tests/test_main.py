@@ -5,7 +5,7 @@ import os
 import numpy as np
 import random
 import types
-from six import BytesIO
+from io import BytesIO
 import pickle
 import pytest
 from numpy.testing import assert_array_equal
