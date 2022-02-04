@@ -1,0 +1,8 @@
+# These are required for developing the package (running the tests, building
+# the documentation) but not necessarily required for _using_ it.
+black
+codecov
+coverage
+flake8
+numpy
+pytest

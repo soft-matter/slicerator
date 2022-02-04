@@ -1,7 +1,6 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-from six.moves import range
 import collections.abc
 import itertools
 from functools import wraps
