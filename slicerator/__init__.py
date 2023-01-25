@@ -35,11 +35,15 @@ class Slicerator(object):
         Also, the attributes of the parent object can be propagated, exposed
         through the child Slicerators. By default, no attributes are
         propagated. Attributes can be white_listed by using the optional
-        parameter `propagated_attrs`.
+        parameter `propagate_attrs`.
 
         Methods taking an index will be remapped if they are decorated
         with `index_attr`. They also have to be present in the
         `propagate_attrs` list.
+
+        Properties declared using `sliceable_property` will be copied *as
+        properties* in subslices, i.e., on access, the property's getter will
+        be called on the subsliced object.
 
         Parameters
         ----------
@@ -186,7 +190,8 @@ class Slicerator(object):
                 if new_length is None:
                     return self._get(indices)
                 else:
-                    return cls(self, indices, new_length, propagate_attrs)
+                    return _instantiate_slicerator_subclass_with_attrs(
+                        self, indices, new_length, propagate_attrs)
 
         for name in ['__name__', '__module__', '__repr__']:
             try:
@@ -238,20 +243,14 @@ class Slicerator(object):
             if new_length is None:
                 return (self[k] for k in rel_indices)
             indices = _index_generator(rel_indices, self.indices)
-            return Slicerator(self._ancestor, indices, new_length,
-                              self._propagate_attrs)
+            return _instantiate_slicerator_subclass_with_attrs(
+                self._ancestor, indices, new_length, self._propagate_attrs)
 
     def __getattr__(self, name):
-        # to avoid infinite recursion, always check if public field is there
         if '_propagate_attrs' not in self.__dict__:
             self._propagate_attrs = []
         if name in self._propagate_attrs:
-            attr = getattr(self._ancestor, name)
-            if (isinstance(attr, SliceableAttribute) or
-                    hasattr(attr, '_index_flag')):
-                return SliceableAttribute(self, attr)
-            else:
-                return attr
+            return _make_property_fget(name)(self)
         raise AttributeError
 
     def __getstate__(self):
@@ -262,6 +261,41 @@ class Slicerator(object):
     def __setstate__(self, data_as_list):
         # When deserializing, restore a Slicerator instance
         return self.__init__(data_as_list)
+
+
+def _make_property_fget(name):
+    def fget(self):
+        if name not in self._ancestor.__dict__:
+            cls_attr = getattr(type(self._ancestor), name, None)
+            if (isinstance(cls_attr, property)
+                    and getattr(cls_attr.fget, '_slice_as_property', False)):
+                return cls_attr.fget(self)
+        attr = getattr(self._ancestor, name)
+        if (isinstance(attr, SliceableAttribute) or
+                hasattr(attr, '_index_flag')):
+            return SliceableAttribute(self, attr)
+        else:
+            return attr
+
+    return fget
+
+
+_slicerator_subclass_cache = {}
+
+
+def _instantiate_slicerator_subclass_with_attrs(
+        ancestor, indices, length, propagate_attrs):
+    if (ancestor, propagate_attrs) in _slicerator_subclass_cache:
+        cls = _slicerator_subclass_cache[ancestor, propagate_attrs]
+        return cls(ancestor, indices, length, propagate_attrs)
+    else:
+        class Sliced(Slicerator): pass
+        obj = Sliced(ancestor, indices, length, propagate_attrs)
+        # to avoid infinite recursion, always check if public field is there
+        for name in obj.__dict__.get('_propagate_attrs', []):
+            setattr(Sliced, name, property(_make_property_fget(name)))
+        _slicerator_subclass_cache[ancestor, propagate_attrs] = Sliced
+        return obj
 
 
 def key_to_indices(key, length):
@@ -478,7 +512,8 @@ class Pipeline(object):
         if new_length is None:
             return self._get(indices)
         else:
-            return Slicerator(self, indices, new_length, self._propagate_attrs)
+            return _instantiate_slicerator_subclass_with_attrs(
+                self, indices, new_length, self._propagate_attrs)
 
     def __getattr__(self, name):
         # to avoid infinite recursion, always check if public field is there
@@ -704,6 +739,11 @@ def _pipeline_fromfunc(func, retain_doc=False, ancestor_count=1):
 def propagate_attr(func):
     func._propagate_flag = True
     return func
+
+
+def sliceable_property(func):
+    func._slice_as_property = True
+    return property(func)
 
 
 def index_attr(func):
