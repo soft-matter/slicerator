@@ -1,6 +1,3 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
 import collections.abc
 import itertools
 from functools import wraps
@@ -177,8 +174,6 @@ class Slicerator(object):
         class SliceratorSubclass(some_class):
             _slicerator_flag = True
             _get = some_class.__getitem__
-            if hasattr(some_class, '__doc__'):
-                __doc__ = some_class.__doc__  # for Python 2, do it here
 
             def __getitem__(self, i):
                 """Getitem supports repeated slicing via Slicerator objects."""
@@ -188,7 +183,7 @@ class Slicerator(object):
                 else:
                     return cls(self, indices, new_length, propagate_attrs)
 
-        for name in ['__name__', '__module__', '__repr__']:
+        for name in ['__name__', '__module__', '__repr__', '__doc__']:
             try:
                 setattr(SliceratorSubclass, name, getattr(some_class, name))
             except AttributeError:
@@ -361,7 +356,8 @@ def _index_generator(new_indices, old_indices):
 
 
 class Pipeline(object):
-    def __init__(self, proc_func, *ancestors, **kwargs):
+    def __init__(self, proc_func, *ancestors,
+                 propagate_attrs=None, propagate_how='first'):
         """A class to support lazy function evaluation on an iterable.
 
         When a ``Pipeline`` object is indexed, it returns an element of its
@@ -401,15 +397,6 @@ class Pipeline(object):
         --------
         pipeline
         """
-        # Python 2 does not allow default arguments in combination with
-        # variable arguments; work around that
-        propagate_attrs = kwargs.pop('propagate_attrs', None)
-        propagate_how = kwargs.pop('propagate_how', 'first')
-        if kwargs:
-            # There are some left. This is an error.
-            raise TypeError("Unexpected keyword argument '{}'.".format(
-                next(iter(kwargs))))
-
         # Only accept ancestors of the same length are accepted
         self._len = len(ancestors[0])
         if not all(len(a) == self._len for a in ancestors):
